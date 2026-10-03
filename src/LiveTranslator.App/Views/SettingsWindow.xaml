@@ -1,0 +1,421 @@
+<Window x:Class="LiveTranslator.App.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Name="Root"
+        Title="设置 - Live Translator"
+        Width="940" Height="680" MinWidth="760" MinHeight="520"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        FontFamily="{StaticResource UiFont}" FontSize="13" Background="#F4F5F7"
+        UseLayoutRounding="True">
+
+    <Window.Resources>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,6,14,6" />
+            <Setter Property="Foreground" Value="#333" />
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#7A7F87" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="10,0,0,0" />
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Padding" Value="4,3" />
+            <Setter Property="Margin" Value="0,4" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style TargetType="PasswordBox">
+            <Setter Property="Padding" Value="4,3" />
+            <Setter Property="Margin" Value="0,4" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Margin" Value="0,4" />
+            <Setter Property="Padding" Value="6,4" />
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Margin" Value="0,6" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="Margin" Value="0,4,8,4" />
+            <Setter Property="MinWidth" Value="72" />
+        </Style>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#E1E3E8" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="16,10" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+        <Style x:Key="Section" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Margin" Value="0,2,0,6" />
+        </Style>
+        <Style x:Key="Code" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="AcceptsReturn" Value="True" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="VerticalContentAlignment" Value="Top" />
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+        </Style>
+    </Window.Resources>
+
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Background="White" BorderBrush="#E1E3E8" BorderThickness="0,1,0,0" Padding="16,10">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="取消" IsCancel="True" />
+                    <Button Content="保存并应用" IsDefault="True" Click="Save_Click" Margin="0,4,0,4" FontWeight="SemiBold" />
+                </StackPanel>
+                <TextBlock x:Name="ValidationText" Foreground="#C42B1C" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,16,0" />
+            </DockPanel>
+        </Border>
+
+        <TabControl x:Name="Tabs" Margin="12,12,12,8" Padding="0" Background="Transparent" BorderThickness="0">
+
+            <!-- ───────────── Providers ───────────── -->
+            <TabItem Header="  翻译服务  ">
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="250" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Style="{StaticResource Card}" Margin="0" Padding="10">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="{Binding RoleText, ElementName=Root}" TextWrapping="Wrap"
+                                       Foreground="#555" FontSize="12" Margin="2,0,0,8" />
+                            <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                                <TextBlock Text="从模板添加：" Foreground="#555" FontSize="12" Margin="2,0,0,2" />
+                                <ComboBox x:Name="PresetBox" ItemsSource="{Binding Presets, ElementName=Root}" SelectedIndex="0"
+                                          MaxDropDownHeight="420" />
+                                <WrapPanel>
+                                    <Button Content="添加" Click="AddPreset_Click" />
+                                    <Button Content="复制" Click="Duplicate_Click" />
+                                    <Button Content="删除" Click="Delete_Click" Margin="0,4,0,4" />
+                                </WrapPanel>
+                            </StackPanel>
+                            <ListBox x:Name="ProfileList" ItemsSource="{Binding Profiles, ElementName=Root}" DisplayMemberPath="Name"
+                                     SelectedItem="{Binding SelectedProfile, ElementName=Root}" BorderThickness="0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                        </DockPanel>
+                    </Border>
+
+                    <Border Grid.Column="2" Style="{StaticResource Card}" Margin="0" Padding="0">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16,10">
+                            <Grid x:Name="ProfileForm" DataContext="{Binding SelectedProfile, ElementName=Root}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Style="{StaticResource Label}" Text="名称" />
+                                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="1" Style="{StaticResource Label}" Text="接口协议" />
+                                <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Protocols, ElementName=Root}"
+                                          SelectedItem="{Binding Protocol}" />
+
+                                <TextBlock Grid.Row="2" Style="{StaticResource Label}" Text="接口地址" />
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="3" Style="{StaticResource Label}" Text="API Key" />
+                                <DockPanel Grid.Row="3" Grid.Column="1">
+                                    <CheckBox x:Name="ShowKeyBox" DockPanel.Dock="Right" Content="显示" Margin="10,0,0,0" Click="ShowKey_Click" />
+                                    <Grid>
+                                        <PasswordBox x:Name="ApiKeyBox" PasswordChanged="ApiKeyBox_PasswordChanged" />
+                                        <TextBox x:Name="ApiKeyPlain" Visibility="Collapsed"
+                                                 Text="{Binding ApiKey, UpdateSourceTrigger=PropertyChanged}" />
+                                    </Grid>
+                                </DockPanel>
+
+                                <TextBlock Grid.Row="4" Style="{StaticResource Label}" Text="模型" />
+                                <DockPanel Grid.Row="4" Grid.Column="1">
+                                    <Button DockPanel.Dock="Right" Content="获取模型列表" Click="FetchModels_Click" Margin="10,4,0,4" />
+                                    <ComboBox x:Name="ModelBox" IsEditable="True" IsTextSearchEnabled="False"
+                                              ItemsSource="{Binding FetchedModels, ElementName=Root}"
+                                              Text="{Binding Model, UpdateSourceTrigger=PropertyChanged}" MaxDropDownHeight="360" />
+                                </DockPanel>
+
+                                <TextBlock Grid.Row="5" Style="{StaticResource Label}" Text="温度" />
+                                <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal">
+                                    <TextBox Width="80" Text="{Binding Temperature, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Style="{StaticResource Hint}" Text="翻译建议 0~0.3；填负数则不发送该参数（部分推理模型要求）" />
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="6" Style="{StaticResource Label}" Text="最大输出 Token" />
+                                <StackPanel Grid.Row="6" Grid.Column="1" Orientation="Horizontal">
+                                    <TextBox Width="80" Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Style="{StaticResource Hint}" Text="填 0 则不发送" />
+                                    <TextBlock Style="{StaticResource Label}" Text="超时（秒）" Margin="24,6,10,6" />
+                                    <TextBox Width="60" Text="{Binding TimeoutSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="7" Style="{StaticResource Label}" Text="流式输出" />
+                                <CheckBox Grid.Row="7" Grid.Column="1" IsChecked="{Binding Stream}"
+                                          Content="开启（逐字显示，强烈建议保持开启）" />
+
+                                <TextBlock Grid.Row="8" Style="{StaticResource Label}" Text="额外请求体" VerticalAlignment="Top" Margin="0,10,14,0" />
+                                <StackPanel Grid.Row="8" Grid.Column="1">
+                                    <TextBox Style="{StaticResource Code}" Height="64" Text="{Binding ExtraBodyJson, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,4"
+                                               Text="JSON 对象，深度合并进请求体，可接入任意厂商的特有参数（如关闭思考）。值为 null 表示删除该字段。" />
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="9" Style="{StaticResource Label}" Text="额外请求头" VerticalAlignment="Top" Margin="0,10,14,0" />
+                                <TextBox Grid.Row="9" Grid.Column="1" Style="{StaticResource Code}" Height="46"
+                                         Text="{Binding ExtraHeaders, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="10" Grid.Column="1" Style="{StaticResource Hint}" Margin="0,4,0,8"
+                                           Text="{Binding PresetNotes, ElementName=Root}" />
+
+                                <TextBlock Grid.Row="11" Style="{StaticResource Label}" Text="用途" />
+                                <WrapPanel Grid.Row="11" Grid.Column="1">
+                                    <Button Content="设为主服务" Click="SetActive_Click" />
+                                    <Button Content="设为备用（竞速）" Click="SetBackup_Click" />
+                                    <Button Content="取消备用" Click="ClearBackup_Click" />
+                                </WrapPanel>
+
+                                <TextBlock Grid.Row="12" Style="{StaticResource Label}" Text="测试" />
+                                <DockPanel Grid.Row="12" Grid.Column="1">
+                                    <Button x:Name="TestButton" DockPanel.Dock="Right" Content="测试翻译" Click="Test_Click" Margin="10,4,0,4" />
+                                    <TextBox x:Name="TestInput" Text="Hello everyone, welcome to today's meeting. Let's get started." />
+                                </DockPanel>
+
+                                <Border Grid.Row="13" Grid.Column="1" Background="#F7F8FA" CornerRadius="4" Padding="10,8" Margin="0,4,0,8"
+                                        MinHeight="44">
+                                    <TextBlock Text="{Binding TestResult, ElementName=Root}" TextWrapping="Wrap" />
+                                </Border>
+                            </Grid>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ───────────── Translation & speed ───────────── -->
+            <TabItem Header="  翻译与速度  ">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,10,0,0">
+                    <StackPanel>
+                        <Border Style="{StaticResource Card}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Style="{StaticResource Label}" Text="目标语言" />
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding Languages, ElementName=Root}" SelectedValuePath="Code"
+                                          SelectedValue="{Binding Draft.TargetLanguage, ElementName=Root}" />
+                            </Grid>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="90" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.ColumnSpan="3" Style="{StaticResource Section}" Text="速度优化" />
+
+                                <CheckBox Grid.Row="1" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Pipeline.PartialTranslation, ElementName=Root}"
+                                          Content="边说边译：句子还没说完就开始翻译，句末标点出现时直接复用结果（延迟最低，Token 消耗略增）" />
+
+                                <TextBlock Grid.Row="2" Style="{StaticResource Label}" Text="边说边译间隔（毫秒）" />
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Draft.Pipeline.PartialIntervalMs, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="2" Grid.Column="2" Style="{StaticResource Hint}" Text="越小越实时，请求越多。推荐 250~500" />
+
+                                <TextBlock Grid.Row="3" Style="{StaticResource Label}" Text="边说边译最少字数" />
+                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding Draft.Pipeline.PartialMinChars, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="3" Grid.Column="2" Style="{StaticResource Hint}" Text="中日韩文字按 2 计" />
+
+                                <TextBlock Grid.Row="4" Style="{StaticResource Label}" Text="边说边译最大长度" />
+                                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding Draft.Pipeline.PartialMaxChars, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="4" Grid.Column="2" Style="{StaticResource Hint}" Text="长时间没有标点时只翻译末尾这么多字符" />
+
+                                <TextBlock Grid.Row="5" Style="{StaticResource Label}" Text="上下文句数" />
+                                <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding Draft.Pipeline.ContextSentences, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="5" Grid.Column="2" Style="{StaticResource Hint}" Text="附带前几句的译文以保持术语一致；0 = 关闭（首字最快）" />
+
+                                <TextBlock Grid.Row="6" Style="{StaticResource Label}" Text="最大并发请求" />
+                                <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding Draft.Pipeline.MaxConcurrentRequests, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="6" Grid.Column="2" Style="{StaticResource Hint}" Text="多句同时翻译，互不等待" />
+
+                                <TextBlock Grid.Row="7" Style="{StaticResource Label}" Text="竞速延迟（毫秒）" />
+                                <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding Draft.HedgeDelayMs, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="7" Grid.Column="2" Style="{StaticResource Hint}"
+                                           Text="设置了备用服务时：主服务超过此时间仍未返回首字（或出错）就同时请求备用服务，谁先出字用谁" />
+
+                                <CheckBox Grid.Row="8" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Pipeline.CacheEnabled, ElementName=Root}"
+                                          Content="缓存翻译结果（重复的句子瞬间出结果）" />
+                                <CheckBox Grid.Row="9" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Pipeline.KeepConnectionWarm, ElementName=Root}"
+                                          Content="连接预热与保活（省去每次 DNS / TCP / TLS 握手；Ollama 会预加载模型）" />
+
+                                <TextBlock Grid.Row="10" Style="{StaticResource Label}" Text="字幕读取间隔（毫秒）" />
+                                <TextBox Grid.Row="10" Grid.Column="1" Text="{Binding Draft.Pipeline.CaptionPollMs, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="10" Grid.Column="2" Style="{StaticResource Hint}" Text="读取实时辅助字幕文本的频率，默认 15" />
+
+                                <CheckBox Grid.Row="11" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Pipeline.HideLiveCaptionsWindow, ElementName=Root}"
+                                          Content="隐藏 Windows 实时辅助字幕窗口" />
+                            </Grid>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Content="恢复默认" Click="ResetPrompt_Click" Margin="0" />
+                                    <TextBlock Style="{StaticResource Section}" Text="系统提示词" VerticalAlignment="Center" />
+                                </DockPanel>
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,4"
+                                           Text="{}{lang} 会被替换为目标语言。提示词越短，首字延迟越低。仅对大模型生效。" />
+                                <TextBox x:Name="PromptBox" Style="{StaticResource Code}" Height="120"
+                                         Text="{Binding Draft.SystemPrompt, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ───────────── Display ───────────── -->
+            <TabItem Header="  显示  ">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,10,0,0">
+                    <StackPanel>
+                        <Border Style="{StaticResource Card}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="90" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.ColumnSpan="3" Style="{StaticResource Section}" Text="主窗口" />
+                                <CheckBox Grid.Row="1" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Display.Topmost, ElementName=Root}" Content="窗口置顶" />
+                                <TextBlock Grid.Row="2" Style="{StaticResource Label}" Text="原文字号" />
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Draft.Display.OriginalFontSize, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="3" Style="{StaticResource Label}" Text="译文字号" />
+                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding Draft.Display.TranslationFontSize, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="4" Style="{StaticResource Label}" Text="保留历史条数" />
+                                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding Draft.Display.HistoryCount, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox Grid.Row="5" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Display.ShowLatency, ElementName=Root}"
+                                          Content="显示延迟（首字 / 完成，从句子结束算起）" />
+                            </Grid>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="160" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.ColumnSpan="3" Style="{StaticResource Section}" Text="悬浮字幕" />
+                                <TextBlock Grid.Row="1" Style="{StaticResource Label}" Text="字号" />
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Draft.Overlay.FontSize, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="2" Style="{StaticResource Label}" Text="背景不透明度" />
+                                <Slider Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="1" VerticalAlignment="Center"
+                                        Value="{Binding Draft.Overlay.BackgroundOpacity, ElementName=Root}" />
+                                <TextBlock Grid.Row="3" Style="{StaticResource Label}" Text="译文颜色" />
+                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding Draft.Overlay.TextColor, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="3" Grid.Column="2" Style="{StaticResource Hint}" Text="如 #FFFFFF、#FFE45C、Yellow" />
+                                <CheckBox Grid.Row="4" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Overlay.ShowOriginal, ElementName=Root}" Content="显示原文" />
+                                <CheckBox Grid.Row="5" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Overlay.ShowPrevious, ElementName=Root}" Content="显示上一句译文" />
+                                <CheckBox Grid.Row="6" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Overlay.ClickThrough, ElementName=Root}"
+                                          Content="鼠标穿透（悬浮字幕不响应鼠标，可叠在播放器上）" />
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ───────────── Network & data ───────────── -->
+            <TabItem Header="  网络与数据  ">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,10,0,0">
+                    <StackPanel>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource Section}" Text="代理" />
+                                <TextBox Text="{Binding Draft.Network.Proxy, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,4"
+                                           Text="留空 = 使用系统代理；none = 直连；或填写代理地址，如 http://127.0.0.1:7890" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource Section}" Text="数据" />
+                                <CheckBox IsChecked="{Binding Draft.Display.LogToFile, ElementName=Root}" Content="将翻译记录保存到文件（按天生成 .tsv，可用 Excel 打开）" />
+                                <WrapPanel>
+                                    <Button Content="打开记录目录" Click="OpenLogs_Click" />
+                                    <Button Content="打开设置目录" Click="OpenData_Click" />
+                                </WrapPanel>
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,4,0,4"
+                                           Text="API Key 使用 Windows DPAPI 加密保存，只有当前 Windows 账户可以解密。" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource Section}" Text="关于" />
+                                <TextBlock TextWrapping="Wrap" Foreground="#555">
+                                    Live Translator 基于 Windows 实时辅助字幕进行语音识别，设计参考了开源项目 LiveCaptions-Translator（Apache-2.0）。
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

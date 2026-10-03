@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>LiveTranslator</AssemblyName>
+    <RootNamespace>LiveTranslator.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Product>Live Translator</Product>
+    <Description>Real-time speech translation on top of Windows Live Captions, for any mainstream LLM API.</Description>
+    <!-- Server GC is for throughput; a UI app wants short, concurrent pauses. -->
+    <ServerGarbageCollector>false</ServerGarbageCollector>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+    <!-- Required by the [LibraryImport] source generator for Win32 interop. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LiveTranslator.Core\LiveTranslator.Core.csproj" />
+  </ItemGroup>
+
+</Project>

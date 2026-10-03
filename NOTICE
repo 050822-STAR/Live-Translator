@@ -1,0 +1,19 @@
+Live Translator
+Copyright 2026 050822-STAR
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes material adapted from LiveCaptions-Translator
+(https://github.com/SakiRinn/LiveCaptions-Translator),
+Copyright (c) 2024 SakiRinn and other contributors,
+licensed under the Apache License, Version 2.0
+(http://www.apache.org/licenses/LICENSE-2.0).
+
+Adapted parts:
+- src/LiveTranslator.Core/Pipeline/TextNormalizer.cs: caption clean-up regular
+  expressions (acronyms, punctuation spacing) and the line-break handling idea.
+- src/LiveTranslator.App/Services/LiveCaptionsSource.cs: locating the Live Captions
+  window and caption element through UI Automation, keeping it on-screen, and
+  hiding/restoring it.
+
+These parts were rewritten and modified for this project.
