@@ -1,0 +1,13 @@
+# Store text with LF in the repository; check out with the platform's native line endings.
+* text=auto
+
+# Visual Studio expects CRLF in solution files.
+*.sln text eol=crlf
+
+# Never touch binary files.
+*.ico binary
+*.png binary
+*.jpg binary
+*.zip binary
+*.exe binary
+*.dll binary
