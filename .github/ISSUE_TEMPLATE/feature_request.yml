@@ -1,0 +1,20 @@
+name: 功能建议 / Feature request
+description: 新功能、新的翻译服务或改进建议
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: 想解决什么问题
+      description: 描述使用场景，比如“看直播时希望……”
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 建议的做法
+  - type: textarea
+    id: provider
+    attributes:
+      label: 新的翻译服务（如果是）
+      description: 服务名称、API 文档链接、是否兼容 OpenAI 接口

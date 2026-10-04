@@ -1,0 +1,27 @@
+Live Translator 使用说明
+========================
+
+运行
+----
+双击 LiveTranslator.exe 即可。
+
+需要：
+- Windows 11 22H2 及以上（自带“实时辅助字幕”）。
+- .NET 8 桌面运行时。如果双击后提示缺少 .NET，请安装：
+  https://dotnet.microsoft.com/download/dotnet/8.0  →  “.NET 桌面运行时 8.0.x”（x64）
+
+首次使用
+--------
+1. 按 Win + Ctrl + L 打开一次 Windows 实时辅助字幕，按提示下载语言包，
+   并在它的设置里把识别语言选成“说话人所用的语言”（它一次只识别一种语言）。
+2. 打开 Live Translator，默认使用免费的 Google 翻译；播放任意有声音的视频即可看到译文。
+3. 接入大模型：点 ⚙ → 翻译服务 → 从模板添加（如 DeepSeek、通义千问、OpenAI、Claude、Gemini 等）
+   → 填 API Key → “测试翻译” → “设为主服务” → “保存并应用”。
+4. 标题栏的服务名、目标语言可以点击快速切换；“悬浮字幕”按钮可打开透明字幕条。
+
+小技巧
+------
+- 国内访问 Google / OpenAI 等需要代理：设置 → 网络与数据 → 代理（留空 = 使用系统代理）。
+- 没有实时辅助字幕时，可以用命令行参数 --no-captions 启动，只在右下角输入框手动翻译。
+- 设置和日志保存在 %APPDATA%\LiveTranslator；API Key 已用 Windows 账户加密保存。
+- 更多说明见 README.md。

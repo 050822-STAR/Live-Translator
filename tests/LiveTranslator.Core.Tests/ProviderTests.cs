@@ -277,6 +277,18 @@ public class MachineTranslationProviderTests
     }
 
     [Fact]
+    public async Task Html_error_pages_are_summarized_instead_of_dumping_markup()
+    {
+        var page = "<html><head><meta charset=\"utf-8\"/><title>Sorry&hellip;</title><style>body{}</style></head><body><div>blocked</div></body></html>";
+        var handler = new FakeHandler(_ => FakeHandler.Text(page, "text/html", HttpStatusCode.TooManyRequests));
+        var provider = new GoogleFreeProvider(TestData.Profile(ProviderProtocol.GoogleFree, "https://translate.googleapis.com", key: ""), new HttpClient(handler));
+
+        var ex = await Assert.ThrowsAsync<ProviderException>(() => TestData.Collect(provider.TranslateStreamAsync(TestData.Request())));
+
+        Assert.Equal("HTTP 429: 服务返回了网页而不是 API 响应：Sorry…（请求过于频繁或额度不足）", ex.Message);
+    }
+
+    [Fact]
     public async Task Google_free_concatenates_segments()
     {
         var handler = new FakeHandler(_ => FakeHandler.Text("""[[["你好。","Hello.",null,null,10],["世界","world",null,null,10]],null,"en"]""", "application/json"));

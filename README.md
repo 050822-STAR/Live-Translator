@@ -1,6 +1,6 @@
 # Live Translator
 
-[![Build & Test](https://github.com/050822-STAR/Live-Translator/actions/workflows/build.yml/badge.svg)](https://github.com/050822-STAR/Live-Translator/actions/workflows/build.yml)
+[![Build & Test](https://github.com/STAR-0925/Live-Translator/actions/workflows/build.yml/badge.svg)](https://github.com/STAR-0925/Live-Translator/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 基于 **Windows 实时辅助字幕（Live Captions）** 的实时语音翻译器。任何正在播放的声音（视频、会议、直播、游戏）都会被系统识别成字幕，再由你选择的大模型或翻译服务实时译出，显示在主窗口和可叠加在任何画面上的悬浮字幕中。
@@ -43,12 +43,12 @@
 
 ## 下载
 
-到 [Releases](https://github.com/050822-STAR/Live-Translator/releases) 下载：
+到 [Releases](https://github.com/STAR-0925/Live-Translator/releases) 下载：
 
 - `LiveTranslator-win-x64-standalone.zip`：独立版，解压后双击 `LiveTranslator.exe` 即可，无需安装任何东西（约 70 MB）。
 - `LiveTranslator-win-x64.zip`：精简版（不到 1 MB），需要先安装 .NET 8 桌面运行时。
 
-每次提交的自动构建产物也可以在 [Actions](https://github.com/050822-STAR/Live-Translator/actions) 页面下载。
+每次提交的自动构建产物也可以在 [Actions](https://github.com/STAR-0925/Live-Translator/actions) 页面下载。
 
 ## 构建与运行
 
@@ -146,7 +146,18 @@ src/LiveTranslator.App         WPF 桌面程序（实时辅助字幕读取、主
 tests/LiveTranslator.Core.Tests xUnit 测试，含基于真实 Socket 的流式与延迟测试
 ```
 
-新增一种协议：在 `Providers/` 中继承 `ProviderBase` 实现 `StreamCoreAsync`，并在 `ProviderFactory` 注册；仅新增 OpenAI 兼容厂商只需在 `ProviderPresets` 里加一行。
+新增一种协议：在 `Providers/` 中继承 `ProviderBase` 实现 `StreamCoreAsync`，并在 `ProviderFactory` 注册；仅新增 OpenAI 兼容厂商只需在 `ProviderPresets` 里加一行。详见 [贡献指南](CONTRIBUTING.md)。
+
+### 发布新版本
+
+1. 修改 `Directory.Build.props` 中的 `<Version>`，并在 [CHANGELOG.md](CHANGELOG.md) 中整理本版本的改动。
+2. 提交并推送后，打上版本标签并推送：`git tag v1.1.0`，然后 `git push origin v1.1.0`。
+3. GitHub Actions 会自动测试、打包两个安装包并创建 Release 草稿，检查说明后点击发布即可。
+
+## 反馈
+
+- 使用问题与功能建议：[Issues](https://github.com/STAR-0925/Live-Translator/issues)
+- 安全问题：见 [SECURITY.md](SECURITY.md)
 
 ## 许可证
 

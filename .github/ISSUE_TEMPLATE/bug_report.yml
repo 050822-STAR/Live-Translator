@@ -1,0 +1,60 @@
+name: 问题反馈 / Bug report
+description: 程序出错、翻译失败或行为不符合预期
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！提交前请确认已经在 Windows 中打开过一次实时辅助字幕（Win + Ctrl + L）并下载了语言包。
+        **请不要在这里粘贴 API Key。**
+  - type: textarea
+    id: what
+    attributes:
+      label: 问题描述
+      description: 发生了什么？你原本期望看到什么？
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开 ...
+        2. 点击 ...
+        3. 出现 ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: Release 版本号，或自己编译时的提交号
+      placeholder: v1.0.0
+    validations:
+      required: true
+  - type: dropdown
+    id: package
+    attributes:
+      label: 使用的安装包
+      options:
+        - 独立版（standalone）
+        - 精简版（需要 .NET 运行时）
+        - 自己编译
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: 翻译服务与模型
+      placeholder: 例如 DeepSeek / deepseek-chat，或 Google 翻译
+  - type: input
+    id: os
+    attributes:
+      label: Windows 版本
+      placeholder: 例如 Windows 11 24H2
+  - type: textarea
+    id: logs
+    attributes:
+      label: 错误信息
+      description: 界面上显示的错误，以及 %APPDATA%\LiveTranslator\error.log 的相关内容（如果有）
+      render: text

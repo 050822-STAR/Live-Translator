@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Version>1.0.0</Version>
-    <Authors>050822-STAR</Authors>
-    <Copyright>Copyright (c) 2026 050822-STAR</Copyright>
+    <Authors>STAR-0925</Authors>
+    <Copyright>Copyright (c) 2026 STAR-0925</Copyright>
   </PropertyGroup>
 </Project>

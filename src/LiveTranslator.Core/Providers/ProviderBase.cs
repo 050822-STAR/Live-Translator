@@ -3,13 +3,14 @@ using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 using LiveTranslator.Core.Http;
 using LiveTranslator.Core.Models;
 
 namespace LiveTranslator.Core.Providers;
 
-public abstract class ProviderBase : ITranslationProvider
+public abstract partial class ProviderBase : ITranslationProvider
 {
     private static readonly MediaTypeHeaderValue JsonMediaType = new("application/json") { CharSet = "utf-8" };
 
@@ -187,8 +188,18 @@ public abstract class ProviderBase : ITranslationProvider
         catch (JsonException)
         {
         }
-        return Truncate(body.Trim());
+        var trimmed = body.Trim();
+        if (trimmed.StartsWith('<'))
+        {
+            // Rate-limit pages, proxies and gateways answer with HTML; markup is unreadable in a caption line.
+            var title = HtmlTitle().Match(trimmed) is { Success: true } m ? WebUtility.HtmlDecode(m.Groups[1].Value).Trim() : "";
+            return title.Length > 0 ? $"服务返回了网页而不是 API 响应：{Truncate(title)}" : "服务返回了网页而不是 API 响应";
+        }
+        return Truncate(trimmed);
     }
+
+    [GeneratedRegex(@"<title[^>]*>(.*?)</title>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex HtmlTitle();
 
     private static string? FindMessage(JsonElement element)
     {

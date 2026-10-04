@@ -1,0 +1,58 @@
+name: Release
+
+# Push a version tag (e.g. `git tag v1.1.0 && git push origin v1.1.0`) to build both packages
+# and open a draft release with them attached. Review the notes, then publish it on GitHub.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Test
+        run: dotnet test LiveTranslator.sln -c Release
+
+      - name: Publish standalone (no .NET install needed)
+        run: >
+          dotnet publish src/LiveTranslator.App -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true -p:DebugType=none -o out/standalone
+
+      - name: Publish framework-dependent (needs .NET 8 Desktop Runtime)
+        run: >
+          dotnet publish src/LiveTranslator.App -c Release -r win-x64 --self-contained false
+          -p:PublishSingleFile=true -p:DebugType=none -o out/framework-dependent
+
+      - name: Package
+        shell: pwsh
+        run: |
+          Copy-Item README.md, NOTICE, LICENSE out/standalone
+          Copy-Item README.md, NOTICE, LICENSE out/framework-dependent
+          Copy-Item packaging/standalone/* out/standalone
+          Copy-Item packaging/framework-dependent/* out/framework-dependent
+          Compress-Archive -Path out/standalone/* -DestinationPath LiveTranslator-win-x64-standalone.zip
+          Compress-Archive -Path out/framework-dependent/* -DestinationPath LiveTranslator-win-x64.zip
+
+      - name: Create draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists; leaving it untouched."
+            exit 0
+          }
+          gh release create $tag LiveTranslator-win-x64-standalone.zip LiveTranslator-win-x64.zip `
+            --draft --title "Live Translator $tag" --generate-notes
