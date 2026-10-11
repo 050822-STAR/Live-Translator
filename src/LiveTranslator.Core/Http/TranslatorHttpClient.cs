@@ -6,8 +6,8 @@ public static class TranslatorHttpClient
 {
     /// <summary>
     /// One long-lived client shared by every provider so TCP/TLS connections are pooled and reused.
-    /// Per-request headers are always set on the <see cref="HttpRequestMessage"/>, never on the client,
-    /// so concurrent requests to different vendors cannot clobber each other's credentials.
+    /// Credentials and vendor headers are always set on the <see cref="HttpRequestMessage"/>, never on
+    /// the client, so concurrent requests to different vendors cannot clobber each other's credentials.
     /// </summary>
     /// <param name="proxy">Empty = system proxy, "none"/"direct" = no proxy, otherwise a proxy URL.</param>
     public static HttpClient Create(string? proxy = null)
@@ -17,7 +17,10 @@ public static class TranslatorHttpClient
             PooledConnectionLifetime = TimeSpan.FromMinutes(15),
             PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
             ConnectTimeout = TimeSpan.FromSeconds(8),
-            AutomaticDecompression = DecompressionMethods.All,
+            // No Accept-Encoding: a compressed token stream can be held back by a CDN, proxy or the
+            // decompressor until a whole block fills, so the answer arrives in one burst at the end.
+            // The payloads are a few hundred bytes; compression saves nothing worth that risk.
+            AutomaticDecompression = DecompressionMethods.None,
             EnableMultipleHttp2Connections = true,
             KeepAlivePingDelay = TimeSpan.FromSeconds(30),
             KeepAlivePingTimeout = TimeSpan.FromSeconds(10),
@@ -38,12 +41,20 @@ public static class TranslatorHttpClient
             handler.UseProxy = true;
         }
 
-        return new HttpClient(handler)
+        var client = new HttpClient(handler)
         {
             // Each provider enforces its own deadline; a global timeout would cut long streams short.
             Timeout = Timeout.InfiniteTimeSpan,
             DefaultRequestVersion = HttpVersion.Version20,
             DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower,
         };
+        // The one header that is safe on the shared client: static and identical for every vendor.
+        // Google's free endpoint answers HTTP/2 requests that carry no User-Agent with a 429 "Sorry"
+        // page (bot detection); a profile's extra headers can still override it per request.
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
+        return client;
     }
+
+    public static string UserAgent { get; } =
+        $"LiveTranslator/{typeof(TranslatorHttpClient).Assembly.GetName().Version?.ToString(3) ?? "1.0.0"} (+https://github.com/STAR-0925/Live-Translator)";
 }

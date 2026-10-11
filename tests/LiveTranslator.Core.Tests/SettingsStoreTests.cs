@@ -47,6 +47,31 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void File_from_a_version_with_extra_body_and_headers_still_loads()
+    {
+        Directory.CreateDirectory(_dir);
+        var path = Path.Combine(_dir, "settings.json");
+        File.WriteAllText(path, """
+            {
+              "Version": 3,
+              "ActiveProfileId": "p1",
+              "Profiles": [
+                { "Id": "p1", "Name": "千问", "Protocol": "OpenAI", "BaseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                  "Model": "qwen-turbo", "ExtraBodyJson": "{\"enable_thinking\":false}", "ExtraHeaders": "X-Custom: 1" }
+              ]
+            }
+            """);
+        var store = new SettingsStore(path, new PlainTextProtector());
+
+        var loaded = store.Load();
+
+        Assert.Null(store.RecoveredBackupPath); // not treated as corrupt
+        Assert.Equal("qwen-turbo", loaded.FindProfile("p1")!.Model);
+        store.Save(loaded);
+        Assert.DoesNotContain("ExtraBodyJson", File.ReadAllText(path)); // dropped on the next save
+    }
+
+    [Fact]
     public void Corrupt_file_is_moved_aside_and_defaults_are_usable()
     {
         Directory.CreateDirectory(_dir);
@@ -88,6 +113,9 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(100, loaded.HedgeDelayMs);
         Assert.Equal(80, loaded.Pipeline.PartialIntervalMs);
         Assert.Equal(16, loaded.Pipeline.MaxConcurrentRequests);
+        // Options added after 1.0.0 fall back to their defaults for older files.
+        Assert.Equal(3, loaded.Pipeline.PartialMaxInFlight);
+        Assert.Equal(90, loaded.Pipeline.LongSentenceSplitChars);
     }
 
     [Fact]
@@ -113,6 +141,19 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(22, kept.Display.TranslationFontSize);
         Assert.Equal(30, kept.Overlay.FontSize);
         Assert.Equal("#FFE45C", kept.Overlay.TextColor);
+    }
+
+    [Fact]
+    public void Version_2_default_partial_interval_moves_to_the_new_default_but_custom_values_stay()
+    {
+        Directory.CreateDirectory(_dir);
+        var untouched = Path.Combine(_dir, "v2-default.json");
+        File.WriteAllText(untouched, """{ "Version": 2, "Pipeline": { "PartialIntervalMs": 350 } }""");
+        var custom = Path.Combine(_dir, "v2-custom.json");
+        File.WriteAllText(custom, """{ "Version": 2, "Pipeline": { "PartialIntervalMs": 500 } }""");
+
+        Assert.Equal(PipelineOptions.DefaultPartialIntervalMs, new SettingsStore(untouched, new PlainTextProtector()).Load().Pipeline.PartialIntervalMs);
+        Assert.Equal(500, new SettingsStore(custom, new PlainTextProtector()).Load().Pipeline.PartialIntervalMs);
     }
 
     [Fact]

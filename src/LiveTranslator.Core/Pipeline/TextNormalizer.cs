@@ -31,7 +31,7 @@ public static partial class TextNormalizer
     [GeneratedRegex(@"(\d)\. (\d)")]
     private static partial Regex DecimalPoint();
 
-    /// <summary>Lines at least this many UTF-8 bytes long are treated as finished sentences at a line break.</summary>
+    /// <summary>A sentence at least this many UTF-8 bytes long is treated as finished at a line break.</summary>
     private const int ParagraphBreakBytes = 40;
 
     public static string Normalize(string? raw)
@@ -49,8 +49,12 @@ public static partial class TextNormalizer
     }
 
     /// <summary>
-    /// LiveCaptions starts a new line after a pause (very often for Japanese). A long line that
-    /// ends without punctuation is a finished utterance, so it gets a period; short ones are joined.
+    /// LiveCaptions starts a new line after a pause (very often for Japanese). A long sentence that
+    /// breaks off without punctuation is a finished utterance, so it gets a period; a short one only
+    /// paused and is joined with a comma. Only the sentence itself counts (from the previous sentence
+    /// end, across earlier lines), not the whole line: LiveCaptions re-joins lines as speech goes on,
+    /// and a period added after a short half sentence would vanish again, leaving that half sentence
+    /// translated on its own and then once more as part of the joined sentence.
     /// </summary>
     private static string JoinLines(string raw)
     {
@@ -73,12 +77,21 @@ public static partial class TextNormalizer
             if (Segmenter.IsSentenceEnd(last) || last is ',' or '，' or '、')
                 continue;
             var cjk = IsCjk(last);
-            if (Encoding.UTF8.GetByteCount(line) >= ParagraphBreakBytes)
+            if (Encoding.UTF8.GetByteCount(CurrentSentence(sb)) >= ParagraphBreakBytes)
                 sb.Append(cjk ? "。" : ".");
             else
                 sb.Append(cjk ? "，" : ",");
         }
         return sb.ToString();
+    }
+
+    /// <summary>The text after the last sentence end: the sentence still being spoken.</summary>
+    private static string CurrentSentence(StringBuilder sb)
+    {
+        int i = sb.Length;
+        while (i > 0 && !Segmenter.IsSentenceEnd(sb[i - 1]))
+            i--;
+        return sb.ToString(i, sb.Length - i);
     }
 
     public static bool IsCjk(char ch) =>

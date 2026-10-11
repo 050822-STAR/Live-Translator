@@ -19,14 +19,21 @@ public abstract partial class ProviderBase : ITranslationProvider
         // Snapshot: edits in the settings UI must not mutate a provider that is mid-request.
         Profile = profile.Clone();
         Http = http;
-        ExtraBody = JsonMerge.ParseObject(Profile.ExtraBodyJson);
-        ExtraHeaders = ParseHeaders(Profile.ExtraHeaders);
     }
 
     protected ProviderProfile Profile { get; }
     protected HttpClient Http { get; }
-    private JsonObject ExtraBody { get; }
-    private IReadOnlyList<KeyValuePair<string, string>> ExtraHeaders { get; }
+
+    /// <summary>Client the requests go through; a provider may swap in its own connections.</summary>
+    protected virtual HttpClient Client => Http;
+
+    /// <summary>
+    /// Request-body fields that switch the model's thinking off, best first (see <see cref="ThinkingOff"/>).
+    /// </summary>
+    protected IReadOnlyList<JsonObject> ThinkingOffVariants { get; init; } = [];
+
+    // Index of the variant in use; past the end once the service has rejected them all.
+    private int _thinkingOffIndex;
 
     public virtual string Name => string.IsNullOrWhiteSpace(Profile.Name) ? Profile.Protocol.ToString() : Profile.Name;
 
@@ -35,6 +42,7 @@ public abstract partial class ProviderBase : ITranslationProvider
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, Profile.TimeoutSeconds)));
+        request.Trace?.MarkStart();
 
         var enumerator = StreamCoreAsync(request, deadline.Token).GetAsyncEnumerator(deadline.Token);
         try
@@ -51,7 +59,11 @@ public abstract partial class ProviderBase : ITranslationProvider
                     throw Translate(ex);
                 }
                 if (!hasNext)
+                {
+                    request.Trace?.MarkEnd();
                     yield break;
+                }
+                request.Trace?.MarkChunk();
                 yield return enumerator.Current;
             }
         }
@@ -63,17 +75,24 @@ public abstract partial class ProviderBase : ITranslationProvider
 
     protected abstract IAsyncEnumerable<string> StreamCoreAsync(TranslationRequest request, CancellationToken ct);
 
-    public virtual async Task WarmUpAsync(CancellationToken ct = default)
+    public virtual Task WarmUpAsync(int connections = 1, CancellationToken ct = default)
     {
         if (!Uri.TryCreate(Profile.BaseUrl, UriKind.Absolute, out var uri))
-            return;
+            return Task.CompletedTask;
+        var origin = uri.GetLeftPart(UriPartial.Authority) + "/";
+        // Probes are sent together so each one holds a connection while the others open theirs.
+        return Task.WhenAll(Enumerable.Range(0, Math.Clamp(connections, 1, 16)).Select(_ => ProbeAsync(origin, ct)));
+    }
+
+    private async Task ProbeAsync(string origin, CancellationToken ct)
+    {
         // Any response — even 404 — leaves a pooled, TLS-established connection behind.
-        using var request = new HttpRequestMessage(HttpMethod.Head, uri.GetLeftPart(UriPartial.Authority) + "/");
+        using var request = new HttpRequestMessage(HttpMethod.Head, origin);
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(TimeSpan.FromSeconds(10));
-            using var _ = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
+            using var _ = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
         }
         catch (Exception) when (!ct.IsCancellationRequested)
         {
@@ -84,20 +103,40 @@ public abstract partial class ProviderBase : ITranslationProvider
     public virtual Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<string>>([]);
 
+    /// <summary>
+    /// Sends a request carrying the current thinking-off variant (merged into the body by
+    /// <paramref name="build"/>). A model that cannot stop thinking rejects the switch with 400/422:
+    /// then the next, weaker variant is tried, and finally none. The choice is shared by all requests,
+    /// so only the first one pays for the extra round trips.
+    /// </summary>
+    /// <param name="handledByCaller">Rejections the caller recovers from itself, e.g. an unsupported temperature.</param>
+    protected async Task<HttpResponseMessage> SendWithThinkingOffAsync(
+        Func<JsonObject?, HttpRequestMessage> build, CancellationToken ct, Func<ProviderException, bool>? handledByCaller = null)
+    {
+        var variants = ThinkingOffVariants;
+        while (true)
+        {
+            var index = Volatile.Read(ref _thinkingOffIndex);
+            var variant = index < variants.Count ? variants[index] : null;
+            using var message = build(variant);
+            try
+            {
+                return await SendAsync(message, ct).ConfigureAwait(false);
+            }
+            catch (ProviderException ex) when (variant is not null &&
+                                               ex.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity &&
+                                               handledByCaller?.Invoke(ex) != true)
+            {
+                // Concurrent requests rejected with the same variant advance it only once.
+                Interlocked.CompareExchange(ref _thinkingOffIndex, index + 1, index);
+            }
+        }
+    }
+
     /// <summary>Sends the request and converts any non-2xx status into a <see cref="ProviderException"/>.</summary>
     protected async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
-        foreach (var (name, value) in ExtraHeaders)
-        {
-            request.Headers.Remove(name);
-            if (!request.Headers.TryAddWithoutValidation(name, value) && request.Content is not null)
-            {
-                request.Content.Headers.Remove(name);
-                request.Content.Headers.TryAddWithoutValidation(name, value);
-            }
-        }
-
-        var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+        var response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
         if (response.IsSuccessStatusCode)
             return response;
 
@@ -123,9 +162,11 @@ public abstract partial class ProviderBase : ITranslationProvider
         return await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
     }
 
-    protected HttpContent JsonBody(JsonObject body)
+    /// <param name="thinkingOff">The thinking-off variant to merge in, if any.</param>
+    protected static HttpContent JsonBody(JsonObject body, JsonObject? thinkingOff = null)
     {
-        JsonMerge.DeepMerge(body, ExtraBody);
+        if (thinkingOff is not null)
+            JsonMerge.DeepMerge(body, thinkingOff);
         var content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(body));
         content.Headers.ContentType = JsonMediaType;
         return content;
@@ -232,22 +273,4 @@ public abstract partial class ProviderBase : ITranslationProvider
             new ProviderException($"无法解析服务响应: {ex.Message}", inner: ex),
         _ => new ProviderException(ex.Message, inner: ex),
     };
-
-    private static List<KeyValuePair<string, string>> ParseHeaders(string? text)
-    {
-        var headers = new List<KeyValuePair<string, string>>();
-        if (string.IsNullOrWhiteSpace(text))
-            return headers;
-        foreach (var raw in text.Split('\n'))
-        {
-            var line = raw.Trim();
-            if (line.Length == 0 || line.StartsWith('#'))
-                continue;
-            var colon = line.IndexOf(':');
-            if (colon <= 0)
-                throw new FormatException($"请求头格式应为 \"Name: value\"：{line}");
-            headers.Add(new(line[..colon].Trim(), line[(colon + 1)..].Trim()));
-        }
-        return headers;
-    }
 }

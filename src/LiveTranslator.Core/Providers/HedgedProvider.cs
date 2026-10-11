@@ -122,8 +122,8 @@ public sealed class HedgedProvider : ITranslationProvider
         }
     }
 
-    public Task WarmUpAsync(CancellationToken ct = default) =>
-        Task.WhenAll(_primary.WarmUpAsync(ct), _backup.WarmUpAsync(ct));
+    public Task WarmUpAsync(int connections = 1, CancellationToken ct = default) =>
+        Task.WhenAll(_primary.WarmUpAsync(connections, ct), _backup.WarmUpAsync(connections, ct));
 
     public Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct = default) => _primary.ListModelsAsync(ct);
 

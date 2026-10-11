@@ -134,20 +134,38 @@ public sealed class AppHost : IAsyncDisposable
     public ITranslationProvider CreateProvider(ProviderProfile profile) =>
         ProviderFactory.Validate(profile) is { } problem
             ? new MisconfiguredProvider(profile.Name, problem)
-            : ProviderFactory.Create(profile, Http);
+            : ProviderFactory.Create(profile, Http, FreshClientFactory(_proxy));
+
+    /// <summary>
+    /// Builds clients with fresh connections on background threads (a provider abandoning blocked
+    /// connections), so it must not touch the UI; the proxy was validated when settings were saved.
+    /// </summary>
+    private static Func<HttpClient> FreshClientFactory(string proxy) => () =>
+    {
+        try
+        {
+            return TranslatorHttpClient.Create(proxy);
+        }
+        catch (FormatException)
+        {
+            return TranslatorHttpClient.Create();
+        }
+    };
 
     private EngineConfig BuildConfig(AppSettings s)
     {
         var language = Languages.Get(s.TargetLanguage);
         var active = s.FindProfile(s.ActiveProfileId)!;
-        var provider = CreateProvider(active);
+        var primary = CreateProvider(active);
         var backup = s.FindProfile(s.BackupProfileId);
-        if (backup is not null)
-            provider = new HedgedProvider(provider, CreateProvider(backup), TimeSpan.FromMilliseconds(s.HedgeDelayMs));
+        // Only finished sentences race the backup; speculation stays on the primary service.
+        var final = backup is null
+            ? primary
+            : new HedgedProvider(primary, CreateProvider(backup), TimeSpan.FromMilliseconds(s.HedgeDelayMs));
 
         var prompt = PromptBuilder.RenderSystemPrompt(s.SystemPrompt, language);
         var scope = string.Join('|', active.Id, active.Protocol, active.BaseUrl, active.Model, backup?.Id ?? "", prompt.GetHashCode());
-        return new EngineConfig(provider, scope, language, prompt, s.Pipeline);
+        return new EngineConfig(final, scope, language, prompt, s.Pipeline, SpeculativeProvider: primary);
     }
 
     private void ApplyToViewModel()
@@ -189,8 +207,11 @@ public sealed class AppHost : IAsyncDisposable
         }
     }
 
+    // Overlapping speculative requests plus the finished sentence's own request.
     private Task WarmUpAsync() =>
-        Settings.Pipeline.KeepConnectionWarm ? Engine.Config.Provider.WarmUpAsync() : Task.CompletedTask;
+        Settings.Pipeline.KeepConnectionWarm
+            ? Engine.Config.Provider.WarmUpAsync(Settings.Pipeline.PartialMaxInFlight + 1)
+            : Task.CompletedTask;
 
     /// <summary>Re-opens the connection before the server's idle timeout drops it, so the next sentence skips TLS setup.</summary>
     private void KeepWarm()

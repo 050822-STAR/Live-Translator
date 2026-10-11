@@ -129,8 +129,6 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Grid.Row="0" Style="{StaticResource Label}" Text="名称" />
@@ -179,34 +177,23 @@
                                 <CheckBox Grid.Row="7" Grid.Column="1" IsChecked="{Binding Stream}"
                                           Content="开启（逐字显示，强烈建议保持开启）" />
 
-                                <TextBlock Grid.Row="8" Style="{StaticResource Label}" Text="额外请求体" VerticalAlignment="Top" Margin="0,10,14,0" />
-                                <StackPanel Grid.Row="8" Grid.Column="1">
-                                    <TextBox Style="{StaticResource Code}" Height="64" Text="{Binding ExtraBodyJson, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,4"
-                                               Text="JSON 对象，深度合并进请求体，可接入任意厂商的特有参数（如关闭思考）。值为 null 表示删除该字段。" />
-                                </StackPanel>
-
-                                <TextBlock Grid.Row="9" Style="{StaticResource Label}" Text="额外请求头" VerticalAlignment="Top" Margin="0,10,14,0" />
-                                <TextBox Grid.Row="9" Grid.Column="1" Style="{StaticResource Code}" Height="46"
-                                         Text="{Binding ExtraHeaders, UpdateSourceTrigger=PropertyChanged}" />
-
-                                <TextBlock Grid.Row="10" Grid.Column="1" Style="{StaticResource Hint}" Margin="0,4,0,8"
+                                <TextBlock Grid.Row="8" Grid.Column="1" Style="{StaticResource Hint}" Margin="0,4,0,8"
                                            Text="{Binding PresetNotes, ElementName=Root}" />
 
-                                <TextBlock Grid.Row="11" Style="{StaticResource Label}" Text="用途" />
-                                <WrapPanel Grid.Row="11" Grid.Column="1">
+                                <TextBlock Grid.Row="9" Style="{StaticResource Label}" Text="用途" />
+                                <WrapPanel Grid.Row="9" Grid.Column="1">
                                     <Button Content="设为主服务" Click="SetActive_Click" />
                                     <Button Content="设为备用（竞速）" Click="SetBackup_Click" />
                                     <Button Content="取消备用" Click="ClearBackup_Click" />
                                 </WrapPanel>
 
-                                <TextBlock Grid.Row="12" Style="{StaticResource Label}" Text="测试" />
-                                <DockPanel Grid.Row="12" Grid.Column="1">
+                                <TextBlock Grid.Row="10" Style="{StaticResource Label}" Text="测试" />
+                                <DockPanel Grid.Row="10" Grid.Column="1">
                                     <Button x:Name="TestButton" DockPanel.Dock="Right" Content="测试翻译" Click="Test_Click" Margin="10,4,0,4" />
                                     <TextBox x:Name="TestInput" Text="Hello everyone, welcome to today's meeting. Let's get started." />
                                 </DockPanel>
 
-                                <Border Grid.Row="13" Grid.Column="1" Background="#F7F8FA" CornerRadius="4" Padding="10,8" Margin="0,4,0,8"
+                                <Border Grid.Row="11" Grid.Column="1" Background="#F7F8FA" CornerRadius="4" Padding="10,8" Margin="0,4,0,8"
                                         MinHeight="44">
                                     <TextBlock Text="{Binding TestResult, ElementName=Root}" TextWrapping="Wrap" />
                                 </Border>
@@ -253,47 +240,66 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Grid.ColumnSpan="3" Style="{StaticResource Section}" Text="速度优化" />
 
                                 <CheckBox Grid.Row="1" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Pipeline.PartialTranslation, ElementName=Root}"
                                           Content="边说边译：句子还没说完就开始翻译，句末标点出现时直接复用结果（延迟最低，Token 消耗略增）" />
 
-                                <TextBlock Grid.Row="2" Style="{StaticResource Label}" Text="边说边译间隔（毫秒）" />
-                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Draft.Pipeline.PartialIntervalMs, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Grid.Row="2" Grid.Column="2" Style="{StaticResource Hint}" Text="越小越实时，请求越多。推荐 250~500" />
+                                <CheckBox Grid.Row="2" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Pipeline.FragmentTranslation, ElementName=Root}"
+                                          Content="分片翻译：逗号、顿号处切开，每个分句说完就单独翻译、只翻一次（请求更短、延迟更低、Token 更省），同一句仍显示在同一行" />
 
-                                <TextBlock Grid.Row="3" Style="{StaticResource Label}" Text="边说边译最少字数" />
-                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding Draft.Pipeline.PartialMinChars, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Grid.Row="3" Grid.Column="2" Style="{StaticResource Hint}" Text="中日韩文字按 2 计" />
+                                <TextBlock Grid.Row="3" Style="{StaticResource Label}" Text="分片最少字数" />
+                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding Draft.Pipeline.FragmentMinChars, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="3" Grid.Column="2" Style="{StaticResource Hint}" Text="比这更短的分句与下一个分句合并发送；中日韩文字按 2 计，默认 10" />
 
-                                <TextBlock Grid.Row="4" Style="{StaticResource Label}" Text="边说边译最大长度" />
-                                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding Draft.Pipeline.PartialMaxChars, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Grid.Row="4" Grid.Column="2" Style="{StaticResource Hint}" Text="长时间没有标点时只翻译末尾这么多字符" />
+                                <TextBlock Grid.Row="4" Style="{StaticResource Label}" Text="边说边译间隔（毫秒）" />
+                                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding Draft.Pipeline.PartialIntervalMs, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="4" Grid.Column="2" Style="{StaticResource Hint}" Text="两次请求的最短间隔，新词出现后立即发送。越小越实时、请求越多，推荐 150~400" />
 
-                                <TextBlock Grid.Row="5" Style="{StaticResource Label}" Text="上下文句数" />
-                                <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding Draft.Pipeline.ContextSentences, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Grid.Row="5" Grid.Column="2" Style="{StaticResource Hint}" Text="附带前几句的译文以保持术语一致；0 = 关闭（首字最快）" />
+                                <TextBlock Grid.Row="5" Style="{StaticResource Label}" Text="边说边译最少字数" />
+                                <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding Draft.Pipeline.PartialMinChars, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="5" Grid.Column="2" Style="{StaticResource Hint}" Text="中日韩文字按 2 计" />
 
-                                <TextBlock Grid.Row="6" Style="{StaticResource Label}" Text="最大并发请求" />
-                                <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding Draft.Pipeline.MaxConcurrentRequests, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Grid.Row="6" Grid.Column="2" Style="{StaticResource Hint}" Text="多句同时翻译，互不等待" />
+                                <TextBlock Grid.Row="6" Style="{StaticResource Label}" Text="边说边译最大长度" />
+                                <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding Draft.Pipeline.PartialMaxChars, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="6" Grid.Column="2" Style="{StaticResource Hint}" Text="长时间没有标点时只翻译末尾这么多字符" />
 
-                                <TextBlock Grid.Row="7" Style="{StaticResource Label}" Text="竞速延迟（毫秒）" />
-                                <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding Draft.HedgeDelayMs, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Grid.Row="7" Grid.Column="2" Style="{StaticResource Hint}"
+                                <TextBlock Grid.Row="7" Style="{StaticResource Label}" Text="边说边译并行请求数" />
+                                <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding Draft.Pipeline.PartialMaxInFlight, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="7" Grid.Column="2" Style="{StaticResource Hint}" Text="多个请求交替进行、互不取消，模型比语速慢时字幕也能持续更新。推荐 2~4" />
+
+                                <TextBlock Grid.Row="8" Style="{StaticResource Label}" Text="长句自动切分（字符）" />
+                                <TextBox Grid.Row="8" Grid.Column="1" Text="{Binding Draft.Pipeline.LongSentenceSplitChars, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="8" Grid.Column="2" Style="{StaticResource Hint}" Text="没有句号的长句超过此长度时，先翻译已说完的分句，保持延迟稳定；中日韩文字按 2 计，0 = 关闭" />
+
+                                <TextBlock Grid.Row="9" Style="{StaticResource Label}" Text="上下文句数" />
+                                <TextBox Grid.Row="9" Grid.Column="1" Text="{Binding Draft.Pipeline.ContextSentences, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="9" Grid.Column="2" Style="{StaticResource Hint}" Text="附带前几句的译文以保持术语一致；0 = 关闭（首字最快）" />
+
+                                <TextBlock Grid.Row="10" Style="{StaticResource Label}" Text="最大并发请求" />
+                                <TextBox Grid.Row="10" Grid.Column="1" Text="{Binding Draft.Pipeline.MaxConcurrentRequests, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="10" Grid.Column="2" Style="{StaticResource Hint}" Text="整句翻译的并发数，多句同时翻译互不等待；边说边译不占用" />
+
+                                <TextBlock Grid.Row="11" Style="{StaticResource Label}" Text="竞速延迟（毫秒）" />
+                                <TextBox Grid.Row="11" Grid.Column="1" Text="{Binding Draft.HedgeDelayMs, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="11" Grid.Column="2" Style="{StaticResource Hint}"
                                            Text="设置了备用服务时：主服务超过此时间仍未返回首字（或出错）就同时请求备用服务，谁先出字用谁" />
 
-                                <CheckBox Grid.Row="8" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Pipeline.CacheEnabled, ElementName=Root}"
+                                <CheckBox Grid.Row="12" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Pipeline.CacheEnabled, ElementName=Root}"
                                           Content="缓存翻译结果（重复的句子瞬间出结果）" />
-                                <CheckBox Grid.Row="9" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Pipeline.KeepConnectionWarm, ElementName=Root}"
+                                <CheckBox Grid.Row="13" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Pipeline.KeepConnectionWarm, ElementName=Root}"
                                           Content="连接预热与保活（省去每次 DNS / TCP / TLS 握手；Ollama 会预加载模型）" />
 
-                                <TextBlock Grid.Row="10" Style="{StaticResource Label}" Text="字幕读取间隔（毫秒）" />
-                                <TextBox Grid.Row="10" Grid.Column="1" Text="{Binding Draft.Pipeline.CaptionPollMs, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Grid.Row="10" Grid.Column="2" Style="{StaticResource Hint}" Text="读取实时辅助字幕文本的频率，默认 15" />
+                                <TextBlock Grid.Row="14" Style="{StaticResource Label}" Text="字幕读取间隔（毫秒）" />
+                                <TextBox Grid.Row="14" Grid.Column="1" Text="{Binding Draft.Pipeline.CaptionPollMs, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Row="14" Grid.Column="2" Style="{StaticResource Hint}" Text="读取实时辅助字幕文本的频率，默认 15" />
 
-                                <CheckBox Grid.Row="11" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Pipeline.HideLiveCaptionsWindow, ElementName=Root}"
+                                <CheckBox Grid.Row="15" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Pipeline.HideLiveCaptionsWindow, ElementName=Root}"
                                           Content="隐藏 Windows 实时辅助字幕窗口" />
                             </Grid>
                         </Border>

@@ -12,7 +12,11 @@ public sealed record TranslationRequest(
     string Text,
     LanguageInfo Target,
     IReadOnlyList<ContextPair> Context,
-    string SystemPrompt);
+    string SystemPrompt)
+{
+    /// <summary>Optional timing record the provider fills in as the response arrives.</summary>
+    public RequestTrace? Trace { get; init; }
+}
 
 public interface ITranslationProvider
 {
@@ -25,8 +29,12 @@ public interface ITranslationProvider
     /// <exception cref="ProviderException">The service failed; the message is safe to show to users.</exception>
     IAsyncEnumerable<string> TranslateStreamAsync(TranslationRequest request, CancellationToken ct = default);
 
-    /// <summary>Opens (or refreshes) a pooled connection so the next request skips DNS/TCP/TLS setup.</summary>
-    Task WarmUpAsync(CancellationToken ct = default);
+    /// <summary>
+    /// Opens (or refreshes) pooled connections so upcoming requests skip DNS/TCP/TLS setup.
+    /// <paramref name="connections"/> is how many requests are expected to overlap: on HTTP/1.1
+    /// each of them needs its own connection (HTTP/2 multiplexes them over one anyway).
+    /// </summary>
+    Task WarmUpAsync(int connections = 1, CancellationToken ct = default);
 
     Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct = default);
 }

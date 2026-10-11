@@ -43,6 +43,18 @@ public class TextNormalizerTests
     public void Normalizes_spacing_and_acronyms(string input, string expected) =>
         Assert.Equal(expected, TextNormalizer.Normalize(input));
 
+    [Theory]
+    // The line is long, but the sentence before the break is short: a pause inside it, not its end.
+    // A full stop here would be taken back once LiveCaptions joins the lines, and the sentence translated twice.
+    [InlineData("ちゃんと休みましたからめっちゃ寝た。もうありえんぐらい寝た\n昨日は", "ちゃんと休みましたからめっちゃ寝た。もうありえんぐらい寝た，昨日は")]
+    [InlineData("That was a really long day for all of us. So we went\nhome", "That was a really long day for all of us. So we went, home")]
+    // Long enough on its own: a finished utterance.
+    [InlineData("昨日の配信でも言ったけどちょっと忙しいから今週はお休みにします\n次は", "昨日の配信でも言ったけどちょっと忙しいから今週はお休みにします。次は")]
+    // A sentence that started on an earlier line is measured as a whole.
+    [InlineData("昨日の配信でも言ったけど\nちょっと忙しいから今週はお休みにします\n次は", "昨日の配信でも言ったけど，ちょっと忙しいから今週はお休みにします。次は")]
+    public void Line_break_ends_a_sentence_only_when_that_sentence_is_long(string input, string expected) =>
+        Assert.Equal(expected, TextNormalizer.Normalize(input));
+
     [Fact]
     public void Long_unpunctuated_line_becomes_a_sentence_and_short_line_is_joined()
     {
@@ -94,15 +106,8 @@ public class JsonMergeTests
     public void Deep_merges_objects_replaces_values_and_null_removes()
     {
         var target = JsonNode.Parse("""{"a":1,"cfg":{"x":1,"y":2},"drop":true}""")!.AsObject();
-        JsonMerge.DeepMerge(target, JsonMerge.ParseObject("""{"a":2,"cfg":{"y":3,"z":4},"drop":null, /* comment */ }"""));
+        JsonMerge.DeepMerge(target, JsonNode.Parse("""{"a":2,"cfg":{"y":3,"z":4},"drop":null}""")!.AsObject());
         Assert.Equal("""{"a":2,"cfg":{"x":1,"y":3,"z":4}}""", target.ToJsonString());
-    }
-
-    [Fact]
-    public void Blank_is_empty_and_non_object_is_rejected()
-    {
-        Assert.Empty(JsonMerge.ParseObject("  "));
-        Assert.Throws<FormatException>(() => JsonMerge.ParseObject("42"));
     }
 }
 

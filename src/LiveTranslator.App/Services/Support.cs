@@ -92,6 +92,6 @@ public sealed class MisconfiguredProvider : ITranslationProvider
 #pragma warning restore CS0162
     }
 
-    public Task WarmUpAsync(CancellationToken ct = default) => Task.CompletedTask;
+    public Task WarmUpAsync(int connections = 1, CancellationToken ct = default) => Task.CompletedTask;
     public Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<string>>([]);
 }

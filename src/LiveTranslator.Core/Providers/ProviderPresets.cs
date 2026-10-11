@@ -2,14 +2,13 @@ using LiveTranslator.Core.Models;
 
 namespace LiveTranslator.Core.Providers;
 
-/// <param name="ExtraBodyJson">Vendor switches, mostly "turn reasoning off": thinking tokens are pure latency for translation.</param>
+/// <remarks>Thinking is switched off in code for every service that allows it (see <see cref="ThinkingOff"/>).</remarks>
 public sealed record ProviderPreset(
     string Id,
     string DisplayName,
     ProviderProtocol Protocol,
     string BaseUrl,
     string DefaultModel,
-    string ExtraBodyJson = "",
     string Notes = "",
     bool RequiresKey = true)
 {
@@ -30,23 +29,22 @@ public static class ProviderPresets
             Notes: "免费版用 api-free.deepl.com，专业版改为 https://api.deepl.com。"),
 
         new("openai", "OpenAI", ProviderProtocol.OpenAI, "https://api.openai.com/v1", "gpt-4o-mini",
-            Notes: "推理模型（o 系列 / gpt-5）可在额外请求体中加 {\"reasoning_effort\":\"minimal\"} 降低延迟。"),
+            Notes: "推理模型（o 系列 / gpt-5）已自动关闭思考，无法关闭的降到最低思考强度。"),
         new("azure-openai", "Azure OpenAI", ProviderProtocol.AzureOpenAI, "https://YOUR-RESOURCE.openai.azure.com/openai/v1", "",
             Notes: "模型填部署名。也可粘贴完整的 .../deployments/{部署名}/chat/completions?api-version=... 地址。"),
         new("anthropic", "Anthropic Claude", ProviderProtocol.Anthropic, "https://api.anthropic.com/v1", "claude-haiku-4-5",
             Notes: "Haiku 系列首字延迟最低，适合实时翻译。"),
         new("gemini", "Google Gemini", ProviderProtocol.Gemini, "https://generativelanguage.googleapis.com/v1beta", "gemini-2.5-flash-lite",
-            "{\"generationConfig\":{\"thinkingConfig\":{\"thinkingBudget\":0}}}",
-            "已默认关闭思考（thinkingBudget=0）。Pro 模型不支持关闭思考，请删除额外请求体。"),
+            Notes: "已默认关闭思考；Pro 等无法关闭思考的模型自动使用最低思考预算。"),
 
         new("deepseek", "DeepSeek 深度求索", ProviderProtocol.OpenAI, "https://api.deepseek.com/v1", "deepseek-chat",
-            Notes: "请使用 deepseek-chat；deepseek-reasoner 会先思考，延迟高。"),
+            Notes: "已默认关闭思考（V4 模型默认开启思考）。"),
         new("qwen", "阿里云百炼 · 通义千问", ProviderProtocol.OpenAI, "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-turbo",
-            "{\"enable_thinking\":false}", "已关闭思考模式。国际站地址: https://dashscope-intl.aliyuncs.com/compatible-mode/v1"),
+            Notes: "已默认关闭思考。国际站地址: https://dashscope-intl.aliyuncs.com/compatible-mode/v1"),
         new("doubao", "火山方舟 · 豆包", ProviderProtocol.OpenAI, "https://ark.cn-beijing.volces.com/api/v3", "doubao-seed-1-6-flash-250615",
-            "{\"thinking\":{\"type\":\"disabled\"}}", "模型可填模型 ID 或推理接入点 ID（ep-...）。不支持 thinking 参数的模型请删除额外请求体。"),
+            Notes: "模型可填模型 ID 或推理接入点 ID（ep-...）。已默认关闭思考。"),
         new("zhipu", "智谱 GLM", ProviderProtocol.OpenAI, "https://open.bigmodel.cn/api/paas/v4", "glm-4-flash",
-            Notes: "glm-4-flash 免费；GLM-4.5 及以上可加 {\"thinking\":{\"type\":\"disabled\"}}。"),
+            Notes: "glm-4-flash 免费；GLM-4.5 及以上已默认关闭思考。"),
         new("moonshot", "月之暗面 Kimi", ProviderProtocol.OpenAI, "https://api.moonshot.cn/v1", "moonshot-v1-8k"),
         new("qianfan", "百度千帆 · 文心", ProviderProtocol.OpenAI, "https://qianfan.baidubce.com/v2", "ernie-speed-128k",
             Notes: "API Key 使用千帆 V2 的 bce-v3/... 格式。"),
@@ -87,7 +85,6 @@ public static class ProviderPresets
             Protocol = preset.Protocol,
             BaseUrl = preset.BaseUrl,
             Model = preset.DefaultModel,
-            ExtraBodyJson = preset.ExtraBodyJson,
             // Local models and MT services get generous timeouts; cloud LLMs fail fast so hedging can kick in.
             TimeoutSeconds = preset.Protocol == ProviderProtocol.Ollama || !preset.RequiresKey ? 30 : 15,
         };

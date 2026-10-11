@@ -39,6 +39,7 @@ public sealed class AnthropicProvider : ProviderBase
         Authorize(message);
 
         using var response = await SendAsync(message, ct).ConfigureAwait(false);
+        request.Trace?.MarkHeaders();
         await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
 
         if (!Profile.Stream || IsJsonResponse(response))

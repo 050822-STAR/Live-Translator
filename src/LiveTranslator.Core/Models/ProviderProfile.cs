@@ -28,8 +28,6 @@ public sealed class ProviderProfile : ObservableModel
     private int _maxTokens = 512;
     private int _timeoutSeconds = 15;
     private bool _stream = true;
-    private string _extraBodyJson = "";
-    private string _extraHeaders = "";
 
     public string Id { get => _id; set => Set(ref _id, value); }
     public string Name { get => _name; set => Set(ref _name, value); }
@@ -48,12 +46,6 @@ public sealed class ProviderProfile : ObservableModel
     public int TimeoutSeconds { get => _timeoutSeconds; set => Set(ref _timeoutSeconds, value); }
     public bool Stream { get => _stream; set => Set(ref _stream, value); }
 
-    /// <summary>JSON object deep-merged into the request body; <c>null</c> values delete keys.</summary>
-    public string ExtraBodyJson { get => _extraBodyJson; set => Set(ref _extraBodyJson, value); }
-
-    /// <summary>One <c>Name: value</c> header per line.</summary>
-    public string ExtraHeaders { get => _extraHeaders; set => Set(ref _extraHeaders, value); }
-
     public bool IsLlm => Protocol is not (ProviderProtocol.DeepL or ProviderProtocol.GoogleFree);
 
     public override string ToString() => Name;
@@ -71,7 +63,5 @@ public sealed class ProviderProfile : ObservableModel
         MaxTokens = MaxTokens,
         TimeoutSeconds = TimeoutSeconds,
         Stream = Stream,
-        ExtraBodyJson = ExtraBodyJson,
-        ExtraHeaders = ExtraHeaders,
     };
 }

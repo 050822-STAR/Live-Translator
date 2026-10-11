@@ -13,6 +13,7 @@ public sealed class GeminiProvider : ProviderBase
 {
     public GeminiProvider(ProviderProfile profile, HttpClient http) : base(profile, http)
     {
+        ThinkingOffVariants = ThinkingOff.ForGemini(Profile);
     }
 
     internal string Endpoint
@@ -56,10 +57,13 @@ public sealed class GeminiProvider : ProviderBase
             ["generationConfig"] = generationConfig,
         };
 
-        using var message = new HttpRequestMessage(HttpMethod.Post, Endpoint) { Content = JsonBody(body) };
-        Authorize(message);
-
-        using var response = await SendAsync(message, ct).ConfigureAwait(false);
+        using var response = await SendWithThinkingOffAsync(thinkingOff =>
+        {
+            var message = new HttpRequestMessage(HttpMethod.Post, Endpoint) { Content = JsonBody((JsonObject)body.DeepClone(), thinkingOff) };
+            Authorize(message);
+            return message;
+        }, ct).ConfigureAwait(false);
+        request.Trace?.MarkHeaders();
         await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
 
         if (!Profile.Stream || IsJsonResponse(response))

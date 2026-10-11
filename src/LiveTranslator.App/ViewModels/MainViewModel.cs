@@ -5,8 +5,10 @@ using LiveTranslator.Core.Pipeline;
 
 namespace LiveTranslator.App.ViewModels;
 
+/// <summary>One transcript line: a sentence, joined from its fragments when it was translated in pieces.</summary>
 public sealed class EntryViewModel : ObservableModel
 {
+    private readonly SentenceLine _line;
     private string _source = "";
     private string _translation = "";
     private bool _isProvisional;
@@ -14,8 +16,13 @@ public sealed class EntryViewModel : ObservableModel
     private string _latency = "";
     private string? _error;
 
-    public EntryViewModel(long id) => Id = id;
+    public EntryViewModel(long group)
+    {
+        Id = group;
+        _line = new SentenceLine(group);
+    }
 
+    /// <summary>The sentence's group id.</summary>
     public long Id { get; }
     public string Source { get => _source; private set => Set(ref _source, value); }
     public string Translation { get => _translation; private set => Set(ref _translation, value); }
@@ -27,17 +34,31 @@ public sealed class EntryViewModel : ObservableModel
 
     public void Update(EntrySnapshot s)
     {
-        Source = s.Source;
-        Translation = s.Translation.Length > 0 ? s.Translation : s.Status == EntryStatus.Pending ? "…" : s.Translation;
-        IsProvisional = s.IsProvisional || s.Status == EntryStatus.Pending;
-        IsWorking = s.Status is EntryStatus.Pending or EntryStatus.Streaming;
+        _line.Apply(s);
+        Refresh();
+    }
+
+    /// <summary>Continues the line with the clause still being spoken (empty text removes it).</summary>
+    public void SetLive(string source, string translation)
+    {
+        _line.SetLive(source, translation);
+        Refresh();
+    }
+
+    private void Refresh()
+    {
+        Source = _line.Source;
+        Translation = _line.Translation;
+        IsProvisional = _line.IsProvisional;
+        IsWorking = _line.IsWorking;
         var hadError = HasError;
-        Error = s.Error;
+        Error = _line.Error;
         if (hadError != HasError)
             RaisePropertyChanged(nameof(HasError));
-        Latency = s switch
+        Latency = _line.Latest switch
         {
-            { Status: EntryStatus.Done, TotalMs: { } total } when s.FirstTokenMs is { } first && first != total => $"{first} / {total} ms",
+            null => "",
+            { Status: EntryStatus.Done, TotalMs: { } total, FirstTokenMs: { } first } when first != total => $"{first} / {total} ms",
             { Status: EntryStatus.Done, TotalMs: { } total } => $"{total} ms",
             { FirstTokenMs: { } first } => $"{first} ms…",
             _ => "",
@@ -47,7 +68,12 @@ public sealed class EntryViewModel : ObservableModel
 
 public sealed class MainViewModel : ObservableModel
 {
+    private const int LatencyWindow = 30;
+
     private readonly Dictionary<long, EntryViewModel> _byId = [];
+    private readonly Dictionary<long, LatencySample> _latency = [];
+    private readonly Queue<long> _latencyOrder = new();
+    private string _latencySummary = "";
     private string _partialSource = "";
     private string _partialTranslation = "";
     private bool _partialTranslating;
@@ -63,6 +89,8 @@ public sealed class MainViewModel : ObservableModel
     private string _overlayOriginal = "";
     private string _overlayTranslation = "";
     private string _overlayPrevious = "";
+    private PartialSnapshot? _live;
+    private EntryViewModel? _liveRow;
 
     public ObservableCollection<EntryViewModel> Entries { get; } = [];
 
@@ -81,6 +109,9 @@ public sealed class MainViewModel : ObservableModel
     public double TranslationFontSize { get => _translationFontSize; set => Set(ref _translationFontSize, value); }
     public bool ShowLatency { get => _showLatency; set => Set(ref _showLatency, value); }
 
+    /// <summary>Rolling latency of recent sentences, e.g. to judge the effect of a settings change.</summary>
+    public string LatencySummary { get => _latencySummary; private set => Set(ref _latencySummary, value); }
+
     public int HistoryLimit
     {
         get => _historyLimit;
@@ -97,26 +128,90 @@ public sealed class MainViewModel : ObservableModel
 
     public void Apply(EntrySnapshot snapshot)
     {
-        if (!_byId.TryGetValue(snapshot.Id, out var vm))
+        var group = snapshot.Group != 0 ? snapshot.Group : snapshot.Id;
+        if (!_byId.TryGetValue(group, out var vm))
         {
-            vm = new EntryViewModel(snapshot.Id);
-            _byId[snapshot.Id] = vm;
-            // Ids grow monotonically, so appending keeps chronological order.
+            vm = new EntryViewModel(group);
+            _byId[group] = vm;
+            // Group ids grow monotonically, so appending keeps chronological order.
             Entries.Add(vm);
             Trim();
             RaisePropertyChanged(nameof(IsEmpty));
         }
         vm.Update(snapshot);
+        if (snapshot is { Status: EntryStatus.Done, TotalMs: { } total })
+            RecordLatency(snapshot.Id, new LatencySample(snapshot.FirstTokenMs ?? total, total, snapshot.Trace?.HeadersMs, snapshot.Trace?.Chunks));
+        if (_live?.Group == group)
+            RefreshLive(); // the line the unfinished clause continues has just appeared
         RefreshOverlay();
     }
 
+    private void RecordLatency(long id, LatencySample sample)
+    {
+        if (!_latency.ContainsKey(id))
+        {
+            _latencyOrder.Enqueue(id);
+            while (_latencyOrder.Count > LatencyWindow)
+                _latency.Remove(_latencyOrder.Dequeue());
+        }
+        _latency[id] = sample; // a revised sentence replaces its earlier measurement
+        LatencySummary = Summarize([.. _latency.Values]);
+    }
+
+    /// <param name="NetworkMs">Request sent → response headers: connection and gateway time, before the model answers.</param>
+    /// <param name="Chunks">Pieces the answer streamed in; about one means it arrived in a single burst.</param>
+    internal sealed record LatencySample(int First, int Total, int? NetworkMs, int? Chunks);
+
+    internal static string Summarize(IReadOnlyCollection<LatencySample> samples)
+    {
+        if (samples.Count == 0)
+            return "";
+        var first = samples.Select(s => s.First).Order().ToArray();
+        var total = samples.Select(s => s.Total).Order().ToArray();
+        var summary = $"近 {samples.Count} 段 · 首字中位 {Percentile(first, 0.5)} ms · 90% ≤ {Percentile(first, 0.9)} ms · 完成中位 {Percentile(total, 0.5)} ms";
+        var network = samples.Select(s => s.NetworkMs).OfType<int>().Order().ToArray();
+        if (network.Length > 0)
+            summary += $" · 网络中位 {Percentile(network, 0.5)} ms";
+        var chunks = samples.Select(s => s.Chunks).OfType<int>().Where(c => c > 0).ToArray();
+        if (chunks.Length > 0)
+            summary += $" · 平均分 {chunks.Average():0.#} 次到达";
+        return summary;
+    }
+
+    // Nearest-rank percentile: always a value that was actually observed.
+    private static int Percentile(int[] sorted, double p) =>
+        sorted[Math.Clamp((int)Math.Ceiling(p * sorted.Length) - 1, 0, sorted.Length - 1)];
+
     public void Apply(PartialSnapshot snapshot)
     {
-        PartialSource = snapshot.Source;
-        PartialTranslation = snapshot.Translation;
-        PartialTranslating = snapshot.IsTranslating;
-        RaisePropertyChanged(nameof(IsEmpty));
+        _live = snapshot;
+        RefreshLive();
         RefreshOverlay();
+    }
+
+    /// <summary>
+    /// The unfinished clause continues the line of its sentence's finished fragments when that line
+    /// is on screen; otherwise it is shown on its own below the transcript.
+    /// </summary>
+    private void RefreshLive()
+    {
+        var live = _live;
+        var row = live is { Group: not 0 } && _byId.TryGetValue(live.Group, out var r) ? r : null;
+        if (_liveRow is not null && _liveRow != row)
+            _liveRow.SetLive("", "");
+        _liveRow = row;
+        if (row is not null)
+        {
+            row.SetLive(live!.Source, live.Translation);
+            PartialSource = PartialTranslation = "";
+        }
+        else
+        {
+            PartialSource = live?.Source ?? "";
+            PartialTranslation = live?.Translation ?? "";
+        }
+        PartialTranslating = live?.IsTranslating ?? false;
+        RaisePropertyChanged(nameof(IsEmpty));
     }
 
     public void SetStatus(string message, bool isError = false)
@@ -129,6 +224,7 @@ public sealed class MainViewModel : ObservableModel
     {
         Entries.Clear();
         _byId.Clear();
+        _liveRow = null;
         RaisePropertyChanged(nameof(IsEmpty));
         RefreshOverlay();
     }
@@ -138,6 +234,8 @@ public sealed class MainViewModel : ObservableModel
         while (Entries.Count > HistoryLimit)
         {
             _byId.Remove(Entries[0].Id);
+            if (_liveRow == Entries[0])
+                _liveRow = null;
             Entries.RemoveAt(0);
         }
     }

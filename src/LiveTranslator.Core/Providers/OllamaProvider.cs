@@ -12,6 +12,7 @@ public sealed class OllamaProvider : ProviderBase
 {
     public OllamaProvider(ProviderProfile profile, HttpClient http) : base(profile, http)
     {
+        ThinkingOffVariants = ThinkingOff.ForOllama(Profile);
     }
 
     protected override async IAsyncEnumerable<string> StreamCoreAsync(
@@ -32,9 +33,13 @@ public sealed class OllamaProvider : ProviderBase
             ["options"] = options,
         };
 
-        using var message = new HttpRequestMessage(HttpMethod.Post, CombineUrl(Profile.BaseUrl, "/api/chat")) { Content = JsonBody(body) };
-        Authorize(message);
-        using var response = await SendAsync(message, ct).ConfigureAwait(false);
+        using var response = await SendWithThinkingOffAsync(thinkingOff =>
+        {
+            var message = new HttpRequestMessage(HttpMethod.Post, CombineUrl(Profile.BaseUrl, "/api/chat")) { Content = JsonBody((JsonObject)body.DeepClone(), thinkingOff) };
+            Authorize(message);
+            return message;
+        }, ct).ConfigureAwait(false);
+        request.Trace?.MarkHeaders();
         await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
 
         await foreach (var line in StreamReaders.ReadLinesAsync(stream, ct).ConfigureAwait(false))
@@ -67,7 +72,7 @@ public sealed class OllamaProvider : ProviderBase
             message.Headers.TryAddWithoutValidation("Authorization", "Bearer " + Profile.ApiKey.Trim());
     }
 
-    public override async Task WarmUpAsync(CancellationToken ct = default)
+    public override async Task WarmUpAsync(int connections = 1, CancellationToken ct = default)
     {
         // Loading weights is the dominant cold-start cost for local models: an empty chat
         // request makes Ollama load the model into memory without generating anything.

@@ -106,6 +106,9 @@
             <DockPanel Grid.Row="2" Background="{StaticResource BgElevated}" Height="34" LastChildFill="True">
                 <TextBox x:Name="ManualInput" DockPanel.Dock="Right" Width="260" Margin="8,4" Style="{StaticResource InputBox}"
                          Tag="输入文字后按 Enter 翻译" KeyDown="ManualInput_KeyDown" />
+                <TextBlock DockPanel.Dock="Right" Text="{Binding LatencySummary}" Foreground="{StaticResource FgMuted}" FontSize="12"
+                           VerticalAlignment="Center" Margin="12,0,4,0" ToolTip="最近完成的分句：从分句定稿到出现首字、到译完的时间；网络 = 请求发出到收到响应头；分几次到达 ≈ 1 说明译文是攒成一整块才送到的，不是真正的流式"
+                           Visibility="{Binding ShowLatency, Converter={StaticResource BoolToVisibility}}" />
                 <TextBlock x:Name="StatusText" Text="{Binding Status}" Foreground="{StaticResource FgMuted}" FontSize="12"
                            VerticalAlignment="Center" Margin="12,0,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Status}" />
             </DockPanel>

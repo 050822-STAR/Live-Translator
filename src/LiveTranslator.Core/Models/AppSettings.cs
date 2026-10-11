@@ -4,7 +4,7 @@ namespace LiveTranslator.Core.Models;
 
 public sealed class AppSettings
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     public int Version { get; set; } = CurrentVersion;
     public string TargetLanguage { get; set; } = "zh-CN";
@@ -42,6 +42,12 @@ public sealed class AppSettings
                 Overlay.FontSize = OverlayOptions.DefaultFontSize;
             if (string.Equals(Overlay.TextColor, "#FFFFFF", StringComparison.OrdinalIgnoreCase))
                 Overlay.TextColor = OverlayOptions.DefaultTextColor;
+        }
+        if (Version < 3 && Pipeline is { PartialIntervalMs: 350 })
+        {
+            // v3: the interval became a minimum spacing (new words are sent at once), so the old
+            // default of 350 ms would hold back every other word; untouched values move to the new default.
+            Pipeline.PartialIntervalMs = PipelineOptions.DefaultPartialIntervalMs;
         }
         Version = CurrentVersion;
     }
@@ -86,13 +92,38 @@ public sealed class PipelineOptions
     public bool PartialTranslation { get; set; } = true;
 
     /// <summary>Minimum spacing between two partial requests.</summary>
-    public int PartialIntervalMs { get; set; } = 350;
+    public const int DefaultPartialIntervalMs = 200;
+
+    /// <summary>Minimum time between two speculative requests; new words go out as soon as it has passed.</summary>
+    public int PartialIntervalMs { get; set; } = DefaultPartialIntervalMs;
 
     /// <summary>Partial text shorter than this (CJK characters count double) is not translated.</summary>
     public int PartialMinChars { get; set; } = 6;
 
     /// <summary>Only the tail of very long unpunctuated speech is translated as a partial.</summary>
     public int PartialMaxChars { get; set; } = 220;
+
+    /// <summary>
+    /// Speculative requests allowed in flight at once. They overlap instead of cancelling each other,
+    /// so the line keeps updating even when the model is slower than the speaker.
+    /// </summary>
+    public int PartialMaxInFlight { get; set; } = 3;
+
+    /// <summary>
+    /// Sends every clause (split at commas and similar marks) on its own as soon as the speaker has
+    /// moved past it, instead of re-translating the growing sentence: shorter requests, lower latency
+    /// and much less load on the service. The fragments of a sentence are still shown as one line.
+    /// </summary>
+    public bool FragmentTranslation { get; set; } = true;
+
+    /// <summary>A clause shorter than this (weighted characters) waits to be sent together with the next one.</summary>
+    public int FragmentMinChars { get; set; } = 10;
+
+    /// <summary>
+    /// Unfinished text longer than this (weighted characters) has its settled leading clauses
+    /// committed and translated on their own; 0 disables splitting.
+    /// </summary>
+    public int LongSentenceSplitChars { get; set; } = 90;
 
     public int ContextSentences { get; set; } = 2;
     public int MaxConcurrentRequests { get; set; } = 4;
@@ -106,6 +137,9 @@ public sealed class PipelineOptions
         PartialIntervalMs = Math.Clamp(PartialIntervalMs, 80, 5000);
         PartialMinChars = Math.Clamp(PartialMinChars, 1, 200);
         PartialMaxChars = Math.Clamp(PartialMaxChars, 40, 2000);
+        PartialMaxInFlight = Math.Clamp(PartialMaxInFlight, 1, 8);
+        FragmentMinChars = Math.Clamp(FragmentMinChars, 2, 200);
+        LongSentenceSplitChars = LongSentenceSplitChars <= 0 ? 0 : Math.Clamp(LongSentenceSplitChars, 20, 1000);
         ContextSentences = Math.Clamp(ContextSentences, 0, 10);
         MaxConcurrentRequests = Math.Clamp(MaxConcurrentRequests, 1, 16);
         CaptionPollMs = Math.Clamp(CaptionPollMs, 5, 500);

@@ -4,15 +4,18 @@ namespace LiveTranslator.Core.Providers;
 
 public static class ProviderFactory
 {
-    /// <exception cref="FormatException">The profile's extra JSON body or headers are malformed.</exception>
-    public static ITranslationProvider Create(ProviderProfile profile, HttpClient http) => profile.Protocol switch
+    /// <param name="newClient">
+    /// Creates a client with fresh connections and the same network settings as <paramref name="http"/>;
+    /// lets a provider abandon connections a service has blocked.
+    /// </param>
+    public static ITranslationProvider Create(ProviderProfile profile, HttpClient http, Func<HttpClient>? newClient = null) => profile.Protocol switch
     {
         ProviderProtocol.OpenAI or ProviderProtocol.AzureOpenAI => new OpenAICompatibleProvider(profile, http),
         ProviderProtocol.Anthropic => new AnthropicProvider(profile, http),
         ProviderProtocol.Gemini => new GeminiProvider(profile, http),
         ProviderProtocol.Ollama => new OllamaProvider(profile, http),
         ProviderProtocol.DeepL => new DeepLProvider(profile, http),
-        ProviderProtocol.GoogleFree => new GoogleFreeProvider(profile, http),
+        ProviderProtocol.GoogleFree => new GoogleFreeProvider(profile, http, newClient),
         _ => throw new NotSupportedException($"未知协议: {profile.Protocol}"),
     };
 
@@ -27,20 +30,6 @@ public static class ProviderFactory
             return "请填写模型名称（可点击“获取模型列表”）";
         if (profile.Protocol == ProviderProtocol.DeepL && string.IsNullOrWhiteSpace(profile.ApiKey))
             return "DeepL 需要 API Key";
-        try
-        {
-            Create(profile, Shared.Http);
-        }
-        catch (FormatException ex)
-        {
-            return ex.Message;
-        }
         return null;
-    }
-
-    private static class Shared
-    {
-        // Validation only constructs providers (no requests), so a never-used client is fine.
-        public static readonly HttpClient Http = new();
     }
 }

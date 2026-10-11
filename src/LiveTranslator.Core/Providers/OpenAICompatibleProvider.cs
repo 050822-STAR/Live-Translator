@@ -20,6 +20,7 @@ public sealed class OpenAICompatibleProvider : ProviderBase
 
     public OpenAICompatibleProvider(ProviderProfile profile, HttpClient http) : base(profile, http)
     {
+        ThinkingOffVariants = ThinkingOff.ForOpenAICompatible(Profile);
     }
 
     private string Endpoint => CombineUrl(Profile.BaseUrl, "/chat/completions");
@@ -32,16 +33,8 @@ public sealed class OpenAICompatibleProvider : ProviderBase
     protected override async IAsyncEnumerable<string> StreamCoreAsync(
         TranslationRequest request, [EnumeratorCancellation] CancellationToken ct)
     {
-        HttpResponseMessage response;
-        try
-        {
-            response = await SendChatAsync(request, ct).ConfigureAwait(false);
-        }
-        catch (ProviderException ex) when (!_minimalParameters && IsUnsupportedParameterError(ex))
-        {
-            _minimalParameters = true;
-            response = await SendChatAsync(request, ct).ConfigureAwait(false);
-        }
+        var response = await SendWithFallbacksAsync(request, ct).ConfigureAwait(false);
+        request.Trace?.MarkHeaders();
 
         using (response)
         {
@@ -50,6 +43,7 @@ public sealed class OpenAICompatibleProvider : ProviderBase
             {
                 using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
                 var text = ParseMessage(doc.RootElement);
+                request.Trace?.SetFinishReason(FinishReason(doc.RootElement));
                 if (!string.IsNullOrEmpty(text))
                     yield return text;
                 yield break;
@@ -59,14 +53,36 @@ public sealed class OpenAICompatibleProvider : ProviderBase
             {
                 if (data == "[DONE]")
                     yield break;
-                var delta = ParseDelta(data);
+                var delta = ParseDelta(data, out var finishReason);
+                request.Trace?.SetFinishReason(finishReason);
                 if (!string.IsNullOrEmpty(delta))
                     yield return delta;
             }
         }
     }
 
-    private Task<HttpResponseMessage> SendChatAsync(TranslationRequest request, CancellationToken ct)
+    /// <summary>
+    /// Drops parameters the server rejects and retries: sampling parameters here, the thinking switch
+    /// in <see cref="ProviderBase.SendWithThinkingOffAsync"/>. Both are remembered, so only the first
+    /// request pays for the extra round trips.
+    /// </summary>
+    private async Task<HttpResponseMessage> SendWithFallbacksAsync(TranslationRequest request, CancellationToken ct)
+    {
+        while (true)
+        {
+            try
+            {
+                return await SendWithThinkingOffAsync(thinkingOff => BuildChat(request, thinkingOff), ct,
+                    handledByCaller: ex => !_minimalParameters && IsUnsupportedParameterError(ex)).ConfigureAwait(false);
+            }
+            catch (ProviderException ex) when (!_minimalParameters && IsUnsupportedParameterError(ex))
+            {
+                _minimalParameters = true;
+            }
+        }
+    }
+
+    private HttpRequestMessage BuildChat(TranslationRequest request, JsonObject? thinkingOff)
     {
         var body = new JsonObject
         {
@@ -82,15 +98,11 @@ public sealed class OpenAICompatibleProvider : ProviderBase
                 body[UsesMaxCompletionTokens ? "max_completion_tokens" : "max_tokens"] = Profile.MaxTokens;
         }
 
-        var message = new HttpRequestMessage(HttpMethod.Post, Endpoint) { Content = JsonBody(body) };
+        var message = new HttpRequestMessage(HttpMethod.Post, Endpoint) { Content = JsonBody(body, thinkingOff) };
+        if (Profile.Stream)
+            message.Headers.Accept.ParseAdd("text/event-stream"); // tells gateways not to buffer the response
         Authorize(message);
-        return SendWithDisposeAsync(message, ct);
-    }
-
-    private async Task<HttpResponseMessage> SendWithDisposeAsync(HttpRequestMessage message, CancellationToken ct)
-    {
-        using (message)
-            return await SendAsync(message, ct).ConfigureAwait(false);
+        return message;
     }
 
     private void Authorize(HttpRequestMessage message)
@@ -124,11 +136,14 @@ public sealed class OpenAICompatibleProvider : ProviderBase
         return url.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) ? url[..^suffix.Length] : url;
     }
 
-    internal static string? ParseDelta(string data)
+    internal static string? ParseDelta(string data) => ParseDelta(data, out _);
+
+    internal static string? ParseDelta(string data, out string? finishReason)
     {
         using var doc = JsonDocument.Parse(data);
         var root = doc.RootElement;
         ThrowIfError(root);
+        finishReason = FinishReason(root);
         if (!root.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0)
             return null;
         var choice = choices[0];
@@ -144,6 +159,12 @@ public sealed class OpenAICompatibleProvider : ProviderBase
             return full.GetString();
         return null;
     }
+
+    private static string? FinishReason(JsonElement root) =>
+        root.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array && choices.GetArrayLength() > 0 &&
+        choices[0].TryGetProperty("finish_reason", out var reason) && reason.ValueKind == JsonValueKind.String
+            ? reason.GetString()
+            : null;
 
     internal static string? ParseMessage(JsonElement root)
     {
@@ -161,11 +182,12 @@ public sealed class OpenAICompatibleProvider : ProviderBase
     {
         if (ex.StatusCode is not (HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity))
             return false;
+        // Only errors naming a sampling parameter: a generic "unsupported" may be about the thinking
+        // switch, which has its own fallback that keeps temperature and the token cap.
         var detail = ex.Detail ?? ex.Message;
         return detail.Contains("temperature", StringComparison.OrdinalIgnoreCase) ||
                detail.Contains("max_tokens", StringComparison.OrdinalIgnoreCase) ||
                detail.Contains("max_completion_tokens", StringComparison.OrdinalIgnoreCase) ||
-               detail.Contains("unsupported", StringComparison.OrdinalIgnoreCase) ||
-               detail.Contains("not support", StringComparison.OrdinalIgnoreCase);
+               detail.Contains("top_p", StringComparison.OrdinalIgnoreCase);
     }
 }

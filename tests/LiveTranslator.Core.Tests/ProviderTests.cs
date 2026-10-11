@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 using LiveTranslator.Core.Models;
 using LiveTranslator.Core.Providers;
@@ -18,8 +19,6 @@ public class OpenAICompatibleProviderTests
             """{"choices":[{"delta":{"content":"世界"}}]}""",
             "[DONE]"));
         var profile = TestData.Profile(ProviderProtocol.OpenAI, "https://api.deepseek.com/v1/");
-        profile.ExtraBodyJson = """{"enable_thinking": false, "temperature": null}""";
-        profile.ExtraHeaders = "X-Custom: 1";
         var provider = new OpenAICompatibleProvider(profile, new HttpClient(handler));
 
         var chunks = await TestData.Collect(provider.TranslateStreamAsync(
@@ -29,18 +28,185 @@ public class OpenAICompatibleProviderTests
         var (request, body) = Assert.Single(handler.Requests);
         Assert.Equal("https://api.deepseek.com/v1/chat/completions", request.RequestUri!.ToString());
         Assert.Equal("Bearer sk-test", request.Headers.GetValues("Authorization").Single());
-        Assert.Equal("1", request.Headers.GetValues("X-Custom").Single());
 
         using var doc = JsonDocument.Parse(body);
         var root = doc.RootElement;
         Assert.Equal("m", root.GetProperty("model").GetString());
         Assert.True(root.GetProperty("stream").GetBoolean());
-        Assert.False(root.GetProperty("enable_thinking").GetBoolean());
-        Assert.False(root.TryGetProperty("temperature", out _)); // removed by the null in extra body
+        Assert.Equal(0.2, root.GetProperty("temperature").GetDouble());
+        Assert.False(root.TryGetProperty("chat_template_kwargs", out _)); // DeepSeek has no thinking switch to send
         Assert.Equal(100, root.GetProperty("max_tokens").GetInt32());
         var roles = root.GetProperty("messages").EnumerateArray().Select(m => m.GetProperty("role").GetString()!).ToArray();
         Assert.Equal(["system", "user", "assistant", "user"], roles);
         Assert.Equal("Hello world", root.GetProperty("messages")[3].GetProperty("content").GetString());
+    }
+
+    [Fact]
+    public async Task Empty_answer_reports_the_services_finish_reason_in_the_trace()
+    {
+        // A reasoning model that spent its whole token budget thinking: no content at all.
+        var handler = new FakeHandler(_ => FakeHandler.Sse(
+            """{"choices":[{"delta":{"role":"assistant","content":""}}]}""",
+            """{"choices":[{"delta":{"reasoning":"..."}}]}""",
+            """{"choices":[{"delta":{},"finish_reason":"length"}]}""",
+            "[DONE]"));
+        var provider = new OpenAICompatibleProvider(TestData.Profile(ProviderProtocol.OpenAI, "https://openrouter.ai/api/v1"), new HttpClient(handler));
+        var trace = new RequestTrace();
+
+        var chunks = await TestData.Collect(provider.TranslateStreamAsync(TestData.Request() with { Trace = trace }));
+
+        Assert.Empty(chunks);
+        var t = trace.Snapshot();
+        Assert.Equal("length", t.FinishReason);
+        Assert.Equal(0, t.Chunks);
+        Assert.NotNull(t.HeadersMs);
+        Assert.NotNull(t.EndMs);
+    }
+
+    [Fact]
+    public async Task OpenRouter_switches_thinking_off_but_other_services_are_left_alone()
+    {
+        var handler = new FakeHandler(_ => FakeHandler.Sse("[DONE]"));
+        var http = new HttpClient(handler);
+
+        await TestData.Collect(new OpenAICompatibleProvider(TestData.Profile(ProviderProtocol.OpenAI, "https://openrouter.ai/api/v1"), http).TranslateStreamAsync(TestData.Request()));
+        await TestData.Collect(new OpenAICompatibleProvider(TestData.Profile(ProviderProtocol.OpenAI, "https://api.deepseek.com/v1"), http).TranslateStreamAsync(TestData.Request()));
+
+        using var openRouter = JsonDocument.Parse(handler.Requests[0].Body);
+        Assert.Equal("none", openRouter.RootElement.GetProperty("reasoning").GetProperty("effort").GetString());
+        using var other = JsonDocument.Parse(handler.Requests[1].Body);
+        Assert.False(other.RootElement.TryGetProperty("reasoning", out _));
+    }
+
+    [Theory]
+    [InlineData("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-turbo", """{"enable_thinking":false}""")]
+    [InlineData("https://api.siliconflow.cn/v1", "Qwen/Qwen3-8B", """{"enable_thinking":false}""")]
+    [InlineData("https://ark.cn-beijing.volces.com/api/v3", "doubao-seed-1-6-flash-250615", """{"thinking":{"type":"disabled"}}""")]
+    [InlineData("https://open.bigmodel.cn/api/paas/v4", "glm-4.5", """{"thinking":{"type":"disabled"}}""")]
+    [InlineData("https://api.openai.com/v1", "gpt-5-mini", """{"reasoning_effort":"none"}""")]
+    [InlineData("https://api.groq.com/openai/v1", "qwen/qwen3-32b", """{"reasoning_effort":"none"}""")]
+    [InlineData("http://localhost:8000/v1", "Qwen3-8B", """{"chat_template_kwargs":{"enable_thinking":false}}""")]
+    [InlineData("https://api.deepseek.com/v1", "deepseek-v4-flash", """{"thinking":{"type":"disabled"}}""")]
+    [InlineData("https://api.moonshot.cn/v1", "kimi-k2.5", """{"thinking":{"type":"disabled"},"reasoning_effort":"low"}""")]
+    public async Task Thinking_is_switched_off_in_each_services_own_way(string baseUrl, string model, string expected)
+    {
+        var handler = new FakeHandler(_ => FakeHandler.Sse("[DONE]"));
+        var provider = new OpenAICompatibleProvider(TestData.Profile(ProviderProtocol.OpenAI, baseUrl, model), new HttpClient(handler));
+
+        await TestData.Collect(provider.TranslateStreamAsync(TestData.Request()));
+
+        var body = JsonNode.Parse(handler.Requests[0].Body)!.AsObject();
+        foreach (var (key, value) in JsonNode.Parse(expected)!.AsObject())
+            Assert.Equal(value!.ToJsonString(), body[key]!.ToJsonString());
+    }
+
+    [Theory]
+    [InlineData("https://api.openai.com/v1", "gpt-4o-mini")]
+    [InlineData("https://api.mistral.ai/v1", "magistral-small-latest")]
+    [InlineData("https://api.x.ai/v1", "grok-3-mini")]
+    [InlineData("https://api.groq.com/openai/v1", "openai/gpt-oss-20b")]
+    public async Task Services_without_a_switch_of_their_own_ask_for_low_effort(string baseUrl, string model)
+    {
+        var handler = new FakeHandler(_ => FakeHandler.Sse("[DONE]"));
+        var provider = new OpenAICompatibleProvider(TestData.Profile(ProviderProtocol.OpenAI, baseUrl, model), new HttpClient(handler));
+
+        await TestData.Collect(provider.TranslateStreamAsync(TestData.Request()));
+
+        var body = JsonNode.Parse(handler.Requests[0].Body)!.AsObject();
+        Assert.Equal("low", body["reasoning_effort"]!.GetValue<string>());
+        string[] standard = ["model", "messages", "stream", "temperature", "max_tokens", "max_completion_tokens", "reasoning_effort"];
+        Assert.All(body.Select(p => p.Key), key => Assert.Contains(key, standard));
+    }
+
+    [Fact]
+    public async Task Model_without_reasoning_that_rejects_effort_is_then_sent_plain()
+    {
+        var handler = new FakeHandler(r => r.Content!.ReadAsStringAsync().Result.Contains("reasoning_effort")
+            ? FakeHandler.Text("""{"error":{"message":"Unrecognized request argument supplied: reasoning_effort"}}""", "application/json", HttpStatusCode.BadRequest)
+            : FakeHandler.Sse("""{"choices":[{"delta":{"content":"好"}}]}""", "[DONE]"));
+        var provider = new OpenAICompatibleProvider(TestData.Profile(ProviderProtocol.OpenAI, "https://api.x.ai/v1", "grok-4"), new HttpClient(handler));
+
+        Assert.Equal(["好"], await TestData.Collect(provider.TranslateStreamAsync(TestData.Request())));
+        Assert.Equal(["好"], await TestData.Collect(provider.TranslateStreamAsync(TestData.Request())));
+
+        Assert.Equal(3, handler.Requests.Count); // one refused try, remembered
+        Assert.DoesNotContain("reasoning_effort", handler.Requests[^1].Body);
+        Assert.Contains("temperature", handler.Requests[^1].Body); // other parameters are kept
+    }
+
+    [Fact]
+    public async Task Unknown_gateway_gets_every_vendors_switch_at_once_then_narrower_ones()
+    {
+        // A strict server that only knows the "thinking" switch refuses every other field.
+        var handler = new FakeHandler(r =>
+        {
+            var body = JsonNode.Parse(r.Content!.ReadAsStringAsync().Result)!.AsObject();
+            return body.Any(p => p.Key is "enable_thinking" or "chat_template_kwargs" or "think" or "reasoning_effort")
+                ? FakeHandler.Text("""{"error":{"message":"Extra inputs are not permitted"}}""", "application/json", HttpStatusCode.UnprocessableEntity)
+                : FakeHandler.Sse("""{"choices":[{"delta":{"content":"好"}}]}""", "[DONE]");
+        });
+        var provider = new OpenAICompatibleProvider(TestData.Profile(ProviderProtocol.OpenAI, "https://one-api.example.com/v1", "kimi-k2.5"), new HttpClient(handler));
+
+        Assert.Equal(["好"], await TestData.Collect(provider.TranslateStreamAsync(TestData.Request())));
+
+        var bundle = JsonNode.Parse(handler.Requests[0].Body)!.AsObject();
+        Assert.False(bundle["enable_thinking"]!.GetValue<bool>());
+        Assert.Equal("disabled", bundle["thinking"]!["type"]!.GetValue<string>());
+        Assert.False(bundle["chat_template_kwargs"]!["enable_thinking"]!.GetValue<bool>());
+        Assert.False(bundle["think"]!.GetValue<bool>());
+        Assert.Equal("low", bundle["reasoning_effort"]!.GetValue<string>());
+        var switchesOnly = JsonNode.Parse(handler.Requests[1].Body)!.AsObject();
+        Assert.Null(switchesOnly["reasoning_effort"]);
+        var accepted = JsonNode.Parse(handler.Requests[2].Body)!.AsObject();
+        Assert.Equal("disabled", accepted["thinking"]!["type"]!.GetValue<string>());
+        Assert.Null(accepted["enable_thinking"]);
+        Assert.Equal(3, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task Weaker_thinking_setting_is_tried_when_the_model_rejects_switching_it_off()
+    {
+        // gpt-5 has no "none"; it goes down to "minimal". The temperature rejection is handled separately.
+        var handler = new FakeHandler(r =>
+        {
+            var body = r.Content!.ReadAsStringAsync().Result;
+            return body.Contains("\"none\"")
+                ? FakeHandler.Text("""{"error":{"message":"Unsupported value: 'reasoning_effort' does not support 'none' with this model."}}""", "application/json", HttpStatusCode.BadRequest)
+                : body.Contains("temperature")
+                    ? FakeHandler.Text("""{"error":{"message":"Unsupported value: 'temperature' does not support 0.2 with this model."}}""", "application/json", HttpStatusCode.BadRequest)
+                    : FakeHandler.Sse("""{"choices":[{"delta":{"content":"好"}}]}""", "[DONE]");
+        });
+        var provider = new OpenAICompatibleProvider(TestData.Profile(ProviderProtocol.OpenAI, "https://api.openai.com/v1", "gpt-5"), new HttpClient(handler));
+
+        Assert.Equal(["好"], await TestData.Collect(provider.TranslateStreamAsync(TestData.Request())));
+        Assert.Equal(["好"], await TestData.Collect(provider.TranslateStreamAsync(TestData.Request())));
+
+        var last = JsonNode.Parse(handler.Requests[^1].Body)!.AsObject();
+        Assert.Equal("minimal", last["reasoning_effort"]!.GetValue<string>()); // thinking stays turned down
+        Assert.Null(last["temperature"]);
+        Assert.Equal(4, handler.Requests.Count); // none → temperature → minimal ok, then straight through
+    }
+
+    [Fact]
+    public async Task Model_that_must_think_is_retried_without_switching_thinking_off()
+    {
+        var handler = new FakeHandler(r => r.Content!.ReadAsStringAsync().Result.Contains("\"reasoning\"")
+            ? FakeHandler.Text("""{"error":{"message":"Reasoning is mandatory for this endpoint and cannot be disabled."}}""", "application/json", HttpStatusCode.BadRequest)
+            : FakeHandler.Sse("""{"choices":[{"delta":{"content":"好"}}]}""", "[DONE]"));
+        var provider = new OpenAICompatibleProvider(TestData.Profile(ProviderProtocol.OpenAI, "https://openrouter.ai/api/v1"), new HttpClient(handler));
+
+        Assert.Equal(["好"], await TestData.Collect(provider.TranslateStreamAsync(TestData.Request())));
+        Assert.Equal(["好"], await TestData.Collect(provider.TranslateStreamAsync(TestData.Request())));
+
+        // "none", "minimal" and "low" are all refused, then it goes without; the second sentence goes straight through.
+        Assert.Equal(5, handler.Requests.Count);
+        using var weaker = JsonDocument.Parse(handler.Requests[1].Body);
+        Assert.Equal("minimal", weaker.RootElement.GetProperty("reasoning").GetProperty("effort").GetString());
+        using var lowest = JsonDocument.Parse(handler.Requests[2].Body);
+        Assert.Equal("low", lowest.RootElement.GetProperty("reasoning").GetProperty("effort").GetString());
+        using var retried = JsonDocument.Parse(handler.Requests[3].Body);
+        Assert.False(retried.RootElement.TryGetProperty("reasoning", out _));
+        Assert.True(retried.RootElement.TryGetProperty("temperature", out _)); // other parameters are kept
     }
 
     [Fact]
@@ -212,7 +378,6 @@ public class GeminiProviderTests
             """{"candidates":[{"content":{"parts":[{"text":"你好"}],"role":"model"}}]}""",
             """{"candidates":[{"content":{"parts":[{"text":"，世界"}],"role":"model"},"finishReason":"STOP"}]}"""));
         var profile = TestData.Profile(ProviderProtocol.Gemini, "https://generativelanguage.googleapis.com/v1beta", "models/gemini-2.5-flash");
-        profile.ExtraBodyJson = """{"generationConfig":{"thinkingConfig":{"thinkingBudget":0}}}""";
         var provider = new GeminiProvider(profile, new HttpClient(handler));
 
         var chunks = await TestData.Collect(provider.TranslateStreamAsync(TestData.Request("Hello", new ContextPair("a", "b"))));
@@ -228,10 +393,51 @@ public class GeminiProviderTests
         Assert.Equal(100, config.GetProperty("maxOutputTokens").GetInt32()); // kept by the deep merge
         Assert.Equal(0, config.GetProperty("thinkingConfig").GetProperty("thinkingBudget").GetInt32());
     }
+
+    [Theory]
+    [InlineData("gemini-3-flash-preview", "thinkingLevel", "minimal")]
+    [InlineData("gemini-2.5-flash-lite", "thinkingBudget", "0")]
+    [InlineData("gemini-flash-latest", "thinkingBudget", "0")]
+    public async Task Thinking_is_switched_off_by_model_generation(string model, string field, string value)
+    {
+        var handler = new FakeHandler(_ => FakeHandler.Sse("""{"candidates":[{"content":{"parts":[{"text":"好"}]}}]}"""));
+        var provider = new GeminiProvider(TestData.Profile(ProviderProtocol.Gemini, "https://generativelanguage.googleapis.com/v1beta", model), new HttpClient(handler));
+
+        await TestData.Collect(provider.TranslateStreamAsync(TestData.Request()));
+
+        var thinking = JsonNode.Parse(handler.Requests[0].Body)!["generationConfig"]!["thinkingConfig"]!;
+        Assert.Equal(value, thinking[field]!.ToString());
+    }
+
+    [Fact]
+    public async Task Pro_model_that_cannot_stop_thinking_falls_back_to_the_smallest_budget()
+    {
+        var handler = new FakeHandler(r => r.Content!.ReadAsStringAsync().Result.Contains("\"thinkingBudget\":0")
+            ? FakeHandler.Text("""{"error":{"code":400,"message":"Budget 0 is invalid. This model only works in thinking mode."}}""", "application/json", HttpStatusCode.BadRequest)
+            : FakeHandler.Sse("""{"candidates":[{"content":{"parts":[{"text":"好"}]}}]}"""));
+        var provider = new GeminiProvider(TestData.Profile(ProviderProtocol.Gemini, "https://generativelanguage.googleapis.com/v1beta", "gemini-2.5-pro"), new HttpClient(handler));
+
+        Assert.Equal(["好"], await TestData.Collect(provider.TranslateStreamAsync(TestData.Request())));
+
+        Assert.Equal(128, JsonNode.Parse(handler.Requests[^1].Body)!["generationConfig"]!["thinkingConfig"]!["thinkingBudget"]!.GetValue<int>());
+    }
 }
 
 public class OllamaProviderTests
 {
+    [Theory]
+    [InlineData("qwen3:8b", "false")]
+    [InlineData("gpt-oss:20b", "low")] // ignores false and keeps thinking; it only takes a level
+    public async Task Thinking_is_switched_off_or_turned_down(string model, string think)
+    {
+        var handler = new FakeHandler(_ => FakeHandler.Text("{\"message\":{\"content\":\"好\"},\"done\":true}\n", "application/x-ndjson"));
+        var provider = new OllamaProvider(TestData.Profile(ProviderProtocol.Ollama, "http://localhost:11434", model, ""), new HttpClient(handler));
+
+        await TestData.Collect(provider.TranslateStreamAsync(TestData.Request()));
+
+        Assert.Equal(think, JsonNode.Parse(handler.Requests[0].Body)!["think"]!.ToString());
+    }
+
     [Fact]
     public async Task Parses_ndjson_stream()
     {
@@ -289,6 +495,92 @@ public class MachineTranslationProviderTests
     }
 
     [Fact]
+    public async Task Google_free_abandons_a_blocked_connection_and_retries_on_a_fresh_one()
+    {
+        // Google flags single connections: the flagged one keeps answering 429, a new one works.
+        var blocked = new FakeHandler(_ => FakeHandler.Text("<html><title>Sorry...</title></html>", "text/html", HttpStatusCode.TooManyRequests));
+        var healthy = new FakeHandler(_ => FakeHandler.Text("""[[["你好","Hello",null,null,10]],null,"en"]""", "application/json"));
+        int created = 0;
+        var provider = new GoogleFreeProvider(
+            TestData.Profile(ProviderProtocol.GoogleFree, "https://translate.googleapis.com", key: ""),
+            new HttpClient(blocked),
+            () => new HttpClient(++created == 1 ? blocked : healthy));
+
+        Assert.Equal(["你好"], await TestData.Collect(provider.TranslateStreamAsync(TestData.Request("Hello"))));
+        Assert.Equal(["你好"], await TestData.Collect(provider.TranslateStreamAsync(TestData.Request("Hello"))));
+
+        Assert.Equal(3, created);              // active + spare up front, one new spare after the switch
+        Assert.Single(blocked.Requests);       // the flagged connection is not used again
+        Assert.Equal(2, healthy.Requests.Count(r => r.Request.Method == HttpMethod.Get));
+    }
+
+    [Fact]
+    public async Task Google_free_reports_429_when_fresh_connections_are_blocked_too()
+    {
+        var blocked = new FakeHandler(_ => FakeHandler.Text("<html><title>Sorry...</title></html>", "text/html", HttpStatusCode.TooManyRequests));
+        var provider = new GoogleFreeProvider(
+            TestData.Profile(ProviderProtocol.GoogleFree, "https://translate.googleapis.com", key: ""),
+            new HttpClient(blocked),
+            () => new HttpClient(blocked));
+
+        var ex = await Assert.ThrowsAsync<ProviderException>(() => TestData.Collect(provider.TranslateStreamAsync(TestData.Request("Hello"))));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, ex.StatusCode);
+        Assert.Equal(3, blocked.Requests.Count(r => r.Request.Method == HttpMethod.Get)); // two quick switches, then it reports
+    }
+
+    [Fact]
+    public async Task Google_free_switches_to_the_prewarmed_spare_connection()
+    {
+        var blocked = new FakeHandler(_ => FakeHandler.Text("<html><title>Sorry...</title></html>", "text/html", HttpStatusCode.TooManyRequests));
+        var spare = new FakeHandler(r => r.Method == HttpMethod.Head
+            ? FakeHandler.Text("", "text/html", HttpStatusCode.NotFound)
+            : FakeHandler.Text("""[[["你好","Hello",null,null,10]],null,"en"]""", "application/json"));
+        var next = new FakeHandler(_ => FakeHandler.Text("", "text/html", HttpStatusCode.NotFound));
+        var handlers = new Queue<FakeHandler>([blocked, spare, next]);
+        var provider = new GoogleFreeProvider(
+            TestData.Profile(ProviderProtocol.GoogleFree, "https://translate.googleapis.com", key: ""),
+            new HttpClient(blocked),
+            () => new HttpClient(handlers.Dequeue()));
+
+        await provider.WarmUpAsync();                     // opens the active and the spare connection
+        Assert.Equal(["你好"], await TestData.Collect(provider.TranslateStreamAsync(TestData.Request("Hello"))));
+
+        Assert.Single(spare.Requests, r => r.Request.Method == HttpMethod.Head); // the spare was warmed in advance
+        Assert.Single(spare.Requests, r => r.Request.Method == HttpMethod.Get);  // and took over the retry
+        await TestData.WaitUntil(() => next.Requests.Count == 1, because: "the next spare is warmed in the background");
+    }
+
+    [Fact]
+    public async Task Google_free_recovers_when_the_spare_is_flagged_too()
+    {
+        var blocked = new FakeHandler(_ => FakeHandler.Text("<html><title>Sorry...</title></html>", "text/html", HttpStatusCode.TooManyRequests));
+        var healthy = new FakeHandler(r => r.Method == HttpMethod.Head
+            ? FakeHandler.Text("", "text/html", HttpStatusCode.NotFound)
+            : FakeHandler.Text("""[[["你好","Hello",null,null,10]],null,"en"]""", "application/json"));
+        var handlers = new Queue<FakeHandler>([blocked, blocked, healthy, healthy]); // active, spare, then fresh ones
+        var provider = new GoogleFreeProvider(
+            TestData.Profile(ProviderProtocol.GoogleFree, "https://translate.googleapis.com", key: ""),
+            new HttpClient(blocked),
+            () => new HttpClient(handlers.Dequeue()));
+
+        Assert.Equal(["你好"], await TestData.Collect(provider.TranslateStreamAsync(TestData.Request("Hello"))));
+        Assert.Equal(2, blocked.Requests.Count(r => r.Request.Method == HttpMethod.Get));
+    }
+
+    [Fact]
+    public async Task Google_free_warm_up_sends_a_single_probe()
+    {
+        var handler = new FakeHandler(_ => FakeHandler.Text("", "text/html", HttpStatusCode.NotFound));
+        var provider = new GoogleFreeProvider(TestData.Profile(ProviderProtocol.GoogleFree, "https://translate.googleapis.com", key: ""), new HttpClient(handler));
+
+        await provider.WarmUpAsync(4);
+
+        var probe = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Head, probe.Request.Method);
+    }
+
+    [Fact]
     public async Task Google_free_concatenates_segments()
     {
         var handler = new FakeHandler(_ => FakeHandler.Text("""[[["你好。","Hello.",null,null,10],["世界","world",null,null,10]],null,"en"]""", "application/json"));
@@ -319,13 +611,4 @@ public class ProviderPresetTests
         }
     }
 
-    [Fact]
-    public void Validate_reports_malformed_extra_body()
-    {
-        var profile = ProviderPresets.CreateProfile("deepseek");
-        profile.ExtraBodyJson = "{not json";
-        Assert.Contains("JSON", ProviderFactory.Validate(profile));
-        profile.ExtraBodyJson = "[1,2]";
-        Assert.Contains("JSON 对象", ProviderFactory.Validate(profile));
-    }
 }

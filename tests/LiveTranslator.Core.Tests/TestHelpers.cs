@@ -109,7 +109,7 @@ internal sealed class FakeProvider : ITranslationProvider
         return _script(request, ct);
     }
 
-    public Task WarmUpAsync(CancellationToken ct = default) => Task.CompletedTask;
+    public Task WarmUpAsync(int connections = 1, CancellationToken ct = default) => Task.CompletedTask;
     public Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<string>>([]);
 
     /// <summary>Echoes "T(text)" split into a few tokens, with a delay before the first and between tokens.</summary>
