@@ -4,6 +4,8 @@
 
 ## [未发布]
 
+## [1.1.0] - 2026-10-11
+
 ### 改进：实时性
 - 边说边译改为流水线：多个请求重叠进行、互不取消，较新的结果追上后才接管显示。此前每个新请求都会取消上一个，模型首字比语速慢时，持续说话期间字幕完全不更新，要等说话人停下才出现。
 - 字幕只增不减：新请求的结果追上屏幕上已有的译文后才替换，不再缩回到首个字重新打出来。
@@ -48,5 +50,6 @@
 - 低延迟管线：流式输出、边说边译与结果复用、事件驱动调度、连接预热、备用服务竞速、结果缓存。
 - API Key 使用 Windows DPAPI 加密保存；设置文件原子写入、损坏时自动备份。
 
-[未发布]: https://github.com/STAR-0925/Live-Translator/compare/v1.0.0...HEAD
+[未发布]: https://github.com/STAR-0925/Live-Translator/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/STAR-0925/Live-Translator/releases/tag/v1.1.0
 [1.0.0]: https://github.com/STAR-0925/Live-Translator/releases/tag/v1.0.0
