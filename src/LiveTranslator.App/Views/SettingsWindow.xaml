@@ -299,8 +299,12 @@
                                 <TextBox Grid.Row="14" Grid.Column="1" Text="{Binding Draft.Pipeline.CaptionPollMs, ElementName=Root, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock Grid.Row="14" Grid.Column="2" Style="{StaticResource Hint}" Text="读取实时辅助字幕文本的频率，默认 15" />
 
-                                <CheckBox Grid.Row="15" Grid.ColumnSpan="3" IsChecked="{Binding Draft.Pipeline.HideLiveCaptionsWindow, ElementName=Root}"
-                                          Content="隐藏 Windows 实时辅助字幕窗口" />
+                                <StackPanel Grid.Row="15" Grid.ColumnSpan="3">
+                                    <CheckBox IsChecked="{Binding Draft.Pipeline.HideLiveCaptionsWindow, ElementName=Root}"
+                                              Content="隐藏 Windows 实时辅助字幕窗口" />
+                                    <TextBlock Style="{StaticResource Hint}" Margin="22,2,0,6"
+                                               Text="切换原始输入语言（听哪种语言）要在这个窗口里设置：取消勾选并保存，窗口会重新出现 → 点它右上角的齿轮 → “字幕语言” → 选择说话人的语言（列表里没有就点“添加语言”下载）。它一次只识别一种语言，换内容时记得跟着切换；支持中、英、日、韩、法、德、西、葡、意、丹麦语。设置好后可以再勾选回来。" />
+                                </StackPanel>
                             </Grid>
                         </Border>
 
